@@ -411,7 +411,7 @@ mod tests {
         assert!(token
             .chars()
             .enumerate()
-            .all(|(index, c)| c == '-' || c.is_ascii_hexdigit()));
+            .all(|(_, c)| c == '-' || c.is_ascii_hexdigit()));
     }
 
     /// Manual probe helper: `cargo test --lib print_current_token -- --ignored --nocapture`.

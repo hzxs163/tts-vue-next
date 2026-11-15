@@ -48,22 +48,6 @@ impl TTSConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type")]
-pub enum TTSChunk {
-    Audio { data: Vec<u8> },
-    WordBoundary {
-        offset: f64,
-        duration: f64,
-        text: String,
-    },
-    SentenceBoundary {
-        offset: f64,
-        duration: f64,
-        text: String,
-    },
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Voice {
     #[serde(rename = "Name")]
     pub name: String,

@@ -52,6 +52,7 @@ pub async fn convert_audio(input_path: &str, output_path: &str, format: &str) ->
     }
 }
 
+#[cfg(test)]
 pub async fn save_audio(audio_bytes: &[u8], output_path: &str, format: &str) -> Result<(), String> {
     validate_format(format)?;
 
@@ -429,6 +430,7 @@ mod tests {
         super::bundled_ffmpeg_path().unwrap()
     }
 
+    #[allow(dead_code)]
     fn sidecar_filename() -> String {
         super::sidecar_filename().to_string()
     }

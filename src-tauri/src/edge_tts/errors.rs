@@ -2,9 +2,6 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum EdgeTTSError {
-    #[error("Unknown response from server: {0}")]
-    UnknownResponse(String),
-
     #[error("Unexpected response from server: {0}")]
     UnexpectedResponse(String),
 
