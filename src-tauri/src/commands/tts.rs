@@ -38,7 +38,16 @@ fn default_retries() -> u32 {
 }
 
 #[command]
-pub async fn tts_convert(params: TtsConvertParams) -> Result<Vec<u8>, String> {
+pub async fn tts_convert(
+    params: TtsConvertParams,
+) -> Result<tauri::ipc::Response, String> {
+    let audio = synthesize(params).await?;
+    // Raw IPC body instead of a JSON number array: a 1 MB MP3 otherwise
+    // expands to roughly 3-4 MB of JSON text on every conversion.
+    Ok(tauri::ipc::Response::new(audio))
+}
+
+async fn synthesize(params: TtsConvertParams) -> Result<Vec<u8>, String> {
     run_tts_convert(params, 1000, |text, config, cancel_rx| async move {
         let communicate = Communicate::new(text, config, cancel_rx);
         communicate.stream_audio().await
@@ -297,7 +306,7 @@ mod tests {
             max_retries: 1,
         };
 
-        let audio = tts_convert(params).await.expect("live synthesis failed");
+        let audio = synthesize(params).await.expect("live synthesis failed");
 
         assert!(audio.len() > 4096, "audio too small: {} bytes", audio.len());
         assert_eq!(audio[0], 0xFF, "missing MP3 frame sync byte");

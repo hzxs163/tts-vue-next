@@ -201,7 +201,8 @@ export const useBatchStore = defineStore("batch", {
             state.files = updateFile(state.files, file.id, { progress: 30 });
           });
 
-          const audioData = await invoke<number[]>("tts_convert", { params });
+          const audioBuffer = await invoke<ArrayBuffer>("tts_convert", { params });
+          const audioData = Array.from(new Uint8Array(audioBuffer));
 
           this.$patch((state) => {
             state.files = updateFile(state.files, file.id, { progress: 80 });

@@ -108,12 +108,12 @@ export const useTtsStore = defineStore("tts", {
       });
 
       try {
-        const audioData = await invoke<number[]>("tts_convert", { params });
+        const audioBuffer = await invoke<ArrayBuffer>("tts_convert", { params });
         if (this.requestVersion !== requestVersion) {
           return;
         }
 
-        const audioBytes = new Uint8Array(audioData);
+        const audioBytes = new Uint8Array(audioBuffer);
         const audioBlob = new Blob([audioBytes], { type: "audio/mpeg" });
         const audioUrl = URL.createObjectURL(audioBlob);
 

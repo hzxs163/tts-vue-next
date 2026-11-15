@@ -73,7 +73,7 @@ describe("useBatchStore", () => {
         return "hello from file";
       }
       if (command === "tts_convert") {
-        return [1, 2, 3];
+        return new Uint8Array([1, 2, 3]).buffer;
       }
       if (command === "write_binary_file") {
         return undefined;
@@ -121,7 +121,7 @@ describe("useBatchStore", () => {
         return "hello from file";
       }
       if (command === "tts_convert") {
-        return [1, 2, 3];
+        return new Uint8Array([1, 2, 3]).buffer;
       }
       if (
         command === "write_binary_file"
@@ -172,7 +172,7 @@ describe("useBatchStore", () => {
         settingsStore.updateOutputFormat("wav");
         settingsStore.updateSavePath("D:/changed");
         settingsStore.updateMaxRetries(2);
-        return [1, 2, 3];
+        return new Uint8Array([1, 2, 3]).buffer;
       }
 
       if (command === "write_binary_file") {
@@ -222,7 +222,7 @@ describe("useBatchStore", () => {
         return "hello from file";
       }
       if (command === "tts_convert") {
-        return [1, 2, 3];
+        return new Uint8Array([1, 2, 3]).buffer;
       }
       if (command === "write_binary_file") {
         throw new Error("write failed");
@@ -253,7 +253,7 @@ describe("useBatchStore", () => {
         return "hello from file";
       }
       if (command === "tts_convert") {
-        return [1, 2, 3];
+        return new Uint8Array([1, 2, 3]).buffer;
       }
       if (command === "write_binary_file") {
         return undefined;

@@ -109,7 +109,7 @@ describe("useTtsStore", () => {
   });
 
   test("converts text and creates a fresh audio URL", async () => {
-    invokeMock.mockResolvedValue([1, 2, 3]);
+    invokeMock.mockResolvedValue(new Uint8Array([1, 2, 3]).buffer);
     const { useTtsStore } = await import("./tts");
     const store = useTtsStore();
 
@@ -147,10 +147,10 @@ describe("useTtsStore", () => {
   });
 
   test("ignores late conversion results after clear", async () => {
-    let resolveInvoke: ((value: number[]) => void) | undefined;
+    let resolveInvoke: ((value: ArrayBuffer) => void) | undefined;
     invokeMock.mockImplementation(
       () =>
-        new Promise<number[]>((resolve) => {
+        new Promise<ArrayBuffer>((resolve) => {
           resolveInvoke = resolve;
         }),
     );
@@ -162,7 +162,7 @@ describe("useTtsStore", () => {
     await flushPromises();
 
     store.clear();
-    resolveInvoke?.([4, 5, 6]);
+    resolveInvoke?.(new Uint8Array([4, 5, 6]).buffer);
     await converting;
 
     expect(store.text).toBe("");
@@ -173,10 +173,10 @@ describe("useTtsStore", () => {
   });
 
   test("prevents concurrent convert calls", async () => {
-    let resolveInvoke: ((value: number[]) => void) | undefined;
+    let resolveInvoke: ((value: ArrayBuffer) => void) | undefined;
     invokeMock.mockImplementation(
       () =>
-        new Promise<number[]>((resolve) => {
+        new Promise<ArrayBuffer>((resolve) => {
           resolveInvoke = resolve;
         }),
     );
@@ -191,7 +191,7 @@ describe("useTtsStore", () => {
 
     expect(invokeMock).toHaveBeenCalledTimes(1);
 
-    resolveInvoke?.([1, 2, 3]);
+    resolveInvoke?.(new Uint8Array([1, 2, 3]).buffer);
     await Promise.all([firstConvert, secondConvert]);
   });
 
