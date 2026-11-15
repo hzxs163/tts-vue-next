@@ -134,6 +134,17 @@ pnpm test:coverage
 | `TTS_EDGE_GEC_VERSION` | `Sec-MS-GEC-Version` | `2-143.0.3650.75` |
 | `TTS_EDGE_USER_AGENT` | 握手使用的 User-Agent | 内置的 Edge 143 UA |
 
+### 图标字体子集
+
+项目只打包实际使用的 Material Design Icons 字形（`src/assets/fonts/mdi-subset.woff2` 与 `src/styles/mdi-subset.css`），Vuetify 只注册用到的组件（`src/plugins/vuetify.ts`）。新增 `mdi-*` 图标、升级 Vuetify 或 `@mdi/font` 后，需重新生成子集：
+
+```bash
+pip install fonttools brotli
+python scripts/generate-mdi-subset.py
+```
+
+脚本会扫描 `src/` 与 `node_modules/vuetify/lib` 中的图标名；生成结果需一并提交，正常构建不依赖 Python 环境。
+
 ### 服务状态与错误诊断
 
 - 应用启动时通过 `check_tts_service` 对**合成端点**做一次握手探测。发音人列表返回 200 并不代表合成可用，因此两者分开检测。

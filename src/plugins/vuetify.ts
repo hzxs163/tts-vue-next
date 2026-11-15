@@ -1,12 +1,66 @@
 import "vuetify/styles";
-import "@mdi/font/css/materialdesignicons.css";
+import "../styles/mdi-subset.css";
 import { createVuetify } from "vuetify";
-import * as components from "vuetify/components";
-import * as directives from "vuetify/directives";
+import {
+  VApp,
+  VAppBar,
+  VAvatar,
+  VBtn,
+  VCard,
+  VCardActions,
+  VCardItem,
+  VCardText,
+  VCardTitle,
+  VChip,
+  VContainer,
+  VDivider,
+  VFadeTransition,
+  VIcon,
+  VList,
+  VListItem,
+  VMain,
+  VNavigationDrawer,
+  VProgressLinear,
+  VSelect,
+  VSlider,
+  VSpacer,
+  VSwitch,
+  VTable,
+  VTextField,
+  VTextarea,
+} from "vuetify/components";
+import { Ripple } from "vuetify/directives";
 
 export const vuetify = createVuetify({
-  components,
-  directives,
+  components: {
+    VApp,
+    VAppBar,
+    VAvatar,
+    VBtn,
+    VCard,
+    VCardActions,
+    VCardItem,
+    VCardText,
+    VCardTitle,
+    VChip,
+    VContainer,
+    VDivider,
+    VFadeTransition,
+    VIcon,
+    VList,
+    VListItem,
+    VMain,
+    VNavigationDrawer,
+    VProgressLinear,
+    VSelect,
+    VSlider,
+    VSpacer,
+    VSwitch,
+    VTable,
+    VTextField,
+    VTextarea,
+  },
+  directives: { Ripple },
   theme: {
     defaultTheme: "light",
     themes: {
