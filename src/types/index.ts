@@ -45,6 +45,13 @@ export interface TtsSettings {
   themeMode: ThemeMode;
 }
 
+export interface ServiceStatus {
+  ok: boolean;
+  code: "ok" | "auth" | "network" | "timeout";
+  endpoint: string;
+  message: string;
+}
+
 export type OutputFormat = "mp3" | "wav" | "ogg" | "flac";
 export type AppLanguage = "zh-CN" | "en-US";
 export type ThemeMode = "system" | "light" | "dark";

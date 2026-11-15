@@ -4,6 +4,7 @@ import { describe, expect, test } from "vitest";
 import { mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { defineComponent } from "vue";
+import i18n from "../../plugins/i18n";
 import { useTtsStore } from "../../stores/tts";
 
 const passthroughStub = defineComponent({
@@ -44,6 +45,7 @@ const transitionStub = defineComponent({
 async function mountTextInput(initialText = "", converting = false) {
   const pinia = createPinia();
   setActivePinia(pinia);
+  i18n.global.locale.value = "en";
 
   const store = useTtsStore();
   store.$patch({
@@ -54,7 +56,7 @@ async function mountTextInput(initialText = "", converting = false) {
   const { default: TextInput } = await import("./TextInput.vue");
   const wrapper = mount(TextInput, {
     global: {
-      plugins: [pinia],
+      plugins: [pinia, i18n],
       stubs: {
         VCard: passthroughStub,
         VCardText: passthroughStub,

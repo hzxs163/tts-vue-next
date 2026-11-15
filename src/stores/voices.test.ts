@@ -78,6 +78,7 @@ describe("useVoicesStore", () => {
     createApp({}).use(pinia);
     setActivePinia(pinia);
     storage.clear();
+    window.localStorage.clear();
   });
 
   test("fetches voices and exposes locale-based getters", async () => {
@@ -183,6 +184,28 @@ describe("useVoicesStore", () => {
     await store.fetchVoices();
 
     expect(store.error).toContain("network unavailable");
+    expect(store.usingCache).toBe(false);
+    expect(store.voices).toEqual([]);
     expect(store.loading).toBe(false);
+  });
+
+  test("falls back to the cached voice list when the service is unavailable", async () => {
+    invokeMock.mockResolvedValueOnce(voicesFixture);
+    const { useVoicesStore } = await import("./voices");
+    await useVoicesStore().fetchVoices();
+
+    invokeMock.mockRejectedValue(new Error("network unavailable"));
+    const nextPinia = createPinia();
+    nextPinia.use(createPersistedState({ storage }));
+    createApp({}).use(nextPinia);
+    setActivePinia(nextPinia);
+
+    const store = useVoicesStore();
+    await store.fetchVoices();
+
+    expect(store.usingCache).toBe(true);
+    expect(store.voices).toEqual(voicesFixture);
+    expect(store.cacheSavedAt).toBeTypeOf("number");
+    expect(store.error).toContain("network unavailable");
   });
 });

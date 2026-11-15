@@ -122,4 +122,12 @@ export default {
         "一个由 Microsoft Edge TTS 服务驱动，并基于 Vue 3、Vuetify 和 Tauri 构建的桌面 TTS 应用。",
     },
   },
+  errors: {
+    auth: "微软语音接口拒绝访问（鉴权规则可能已变更），请更新应用或检查端点配置。",
+    network: "无法连接微软语音服务，请检查网络或代理设置。",
+    timeout: "语音服务连接超时，请稍后重试。",
+    cancelled: "转换已取消。",
+    unknown: "转换失败：{message}",
+    voiceCache: "发音人列表加载失败，已使用本地缓存，部分音色可能不是最新。",
+  },
 } as const;

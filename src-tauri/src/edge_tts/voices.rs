@@ -1,21 +1,52 @@
-use crate::edge_tts::constants::{
-    CHROMIUM_MAJOR_VERSION, SEC_MS_GEC_VERSION, TRUSTED_CLIENT_TOKEN, USER_AGENT,
-    VOICE_LIST_URL,
-};
+use crate::edge_tts::config;
+use crate::edge_tts::constants::{CHROMIUM_MAJOR_VERSION, TRUSTED_CLIENT_TOKEN};
 use crate::edge_tts::drm::{adjust_clock_skew, generate_muid, generate_sec_ms_gec};
 use crate::edge_tts::errors::EdgeTTSError;
 use crate::edge_tts::types::Voice;
 
 pub async fn list_voices() -> Result<Vec<Voice>, EdgeTTSError> {
-    list_voices_from_url(VOICE_LIST_URL).await
+    let settings = config::get();
+    let mut last_error = None;
+
+    for base_url in &settings.voice_list_urls {
+        match list_voices_from_url_with_version(base_url, &settings.gec_version).await {
+            Ok(voices) => {
+                log::info!(
+                    "Edge TTS voice list loaded from {base_url}: {} voices",
+                    voices.len()
+                );
+                return Ok(voices);
+            }
+            Err(error) => {
+                log::warn!("Edge TTS voice list failed for {base_url}: {error}");
+                last_error = Some(error);
+            }
+        }
+    }
+
+    Err(last_error.unwrap_or_else(|| {
+        EdgeTTSError::ConnectionError("no voice list endpoint configured".into())
+    }))
 }
 
+#[cfg(test)]
 async fn list_voices_from_url(base_url: &str) -> Result<Vec<Voice>, EdgeTTSError> {
+    list_voices_from_url_with_version(
+        base_url,
+        crate::edge_tts::constants::SEC_MS_GEC_VERSION,
+    )
+    .await
+}
+
+async fn list_voices_from_url_with_version(
+    base_url: &str,
+    version: &str,
+) -> Result<Vec<Voice>, EdgeTTSError> {
     let client = reqwest::Client::new();
 
-    match fetch_voices(&client, base_url).await {
+    match fetch_voices(&client, base_url, version).await {
         Ok(voices) => Ok(voices),
-        Err(EdgeTTSError::HttpError(403)) => fetch_voices(&client, base_url).await,
+        Err(EdgeTTSError::HttpError(403)) => fetch_voices(&client, base_url, version).await,
         Err(error) => Err(error),
     }
 }
@@ -23,16 +54,17 @@ async fn list_voices_from_url(base_url: &str) -> Result<Vec<Voice>, EdgeTTSError
 async fn fetch_voices(
     client: &reqwest::Client,
     base_url: &str,
+    version: &str,
 ) -> Result<Vec<Voice>, EdgeTTSError> {
     let separator = if base_url.contains('?') { '&' } else { '?' };
     let url = format!(
-        "{base_url}{separator}trustedclienttoken={TRUSTED_CLIENT_TOKEN}&Sec-MS-GEC={}&Sec-MS-GEC-Version={SEC_MS_GEC_VERSION}",
+        "{base_url}{separator}trustedclienttoken={TRUSTED_CLIENT_TOKEN}&Sec-MS-GEC={}&Sec-MS-GEC-Version={version}",
         generate_sec_ms_gec()
     );
 
     let response = client
         .get(url)
-        .header("User-Agent", USER_AGENT)
+        .header("User-Agent", config::get().user_agent.as_str())
         .header("Accept-Encoding", "gzip, deflate, br, zstd")
         .header("Accept-Language", "en-US,en;q=0.9")
         .header("Authority", "speech.platform.bing.com")
@@ -121,6 +153,23 @@ mod tests {
             EdgeTTSError::HttpError(500) => {}
             other => panic!("unexpected error: {other:?}"),
         }
+    }
+
+    /// Live probe: `cargo test --lib live_ -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore = "live network probe: requires Microsoft Edge TTS reachability"]
+    async fn live_list_voices_returns_microsoft_catalog() {
+        let voices = list_voices().await.expect("live voice list failed");
+
+        assert!(
+            voices.len() > 100,
+            "unexpected catalog size: {}",
+            voices.len()
+        );
+        assert!(voices
+            .iter()
+            .any(|voice| voice.short_name == "zh-CN-XiaoxiaoNeural"));
+        println!("LIVE VOICES: {} entries", voices.len());
     }
 
     async fn spawn_server(responses: Vec<String>) -> (String, Arc<Mutex<Vec<String>>>) {

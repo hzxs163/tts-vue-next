@@ -64,8 +64,8 @@
 
 ### 环境要求
 
-- **Node.js** >= 18.0.0
-- **pnpm** >= 8.0.0
+- **Node.js** >= 20.0.0（Vite 6 / Vitest 4 要求）
+- **pnpm** >= 9.0.0（锁文件为 `lockfileVersion: 9.0`）
 - **Rust** >= 1.70.0
 - **系统依赖**
   - Windows: 无需额外依赖
@@ -79,10 +79,10 @@
 git clone <repository-url>
 cd tts-vue-next
 
-# 安装前端依赖
-pnpm install
+# 安装前端依赖（postinstall 会自动同步 FFmpeg sidecar）
+pnpm install --frozen-lockfile
 
-# 同步 FFmpeg 二进制文件（自动执行）
+# 如需手动重新同步 FFmpeg 二进制文件
 pnpm ffmpeg:sync
 ```
 
@@ -90,7 +90,7 @@ pnpm ffmpeg:sync
 
 ```bash
 # 启动开发服务器
-pnpm tauri dev
+pnpm tauri:dev
 ```
 
 这将会：
@@ -104,7 +104,7 @@ pnpm tauri dev
 pnpm build
 
 # 构建桌面应用
-pnpm tauri build
+pnpm tauri:build
 ```
 
 构建产物位于 `src-tauri/target/release/bundle/` 目录。
@@ -112,12 +112,33 @@ pnpm tauri build
 ### 运行测试
 
 ```bash
-# 运行单元测试
+# 运行单元测试（Vitest + happy-dom，配置见 vitest.config.ts）
 pnpm test
 
-# 运行测试并生成覆盖率报告
+# 监听模式，适合开发时持续回归
+pnpm test:watch
+
+# 运行测试并生成覆盖率报告（输出到 coverage/）
 pnpm test:coverage
 ```
+
+### 运行时配置（高级）
+
+微软会不定期调整 Edge Read Aloud 协议。所有端点与协议版本集中在
+`src-tauri/src/edge_tts/config.rs`，可在启动应用前通过环境变量覆盖，无需重新打包：
+
+| 环境变量 | 说明 | 默认值 |
+| --- | --- | --- |
+| `TTS_EDGE_WSS_URL` | 合成 WebSocket 端点 | 内置的 `speech.platform.bing.com/.../edge/v1` |
+| `TTS_EDGE_VOICE_LIST_URLS` | 发音人列表端点，逗号分隔，按顺序回退 | 内置的 `voices/list` |
+| `TTS_EDGE_GEC_VERSION` | `Sec-MS-GEC-Version` | `2-143.0.3650.75` |
+| `TTS_EDGE_USER_AGENT` | 握手使用的 User-Agent | 内置的 Edge 143 UA |
+
+### 服务状态与错误诊断
+
+- 应用启动时通过 `check_tts_service` 对**合成端点**做一次握手探测。发音人列表返回 200 并不代表合成可用，因此两者分开检测。
+- 探测或转换失败时，界面按 `auth` / `network` / `timeout` / `cancelled` / `unknown` 分类提示，Rust 侧通过 `env_logger` 输出日志（可用 `RUST_LOG=debug` 调整级别）。
+- 发音人列表拉取失败时自动回退到 localStorage 中的缓存，界面显示「使用缓存」提示。
 
 ## 项目结构
 
@@ -153,7 +174,8 @@ tts-vue-next/
 ├── docs/                      # 项目文档
 ├── package.json               # Node.js 依赖配置
 ├── tsconfig.json              # TypeScript 配置
-└── vite.config.ts             # Vite 配置
+├── vite.config.ts             # Vite 配置
+└── vitest.config.ts           # Vitest 测试与覆盖率配置
 ```
 
 ## 核心功能说明

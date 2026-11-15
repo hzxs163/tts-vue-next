@@ -54,6 +54,10 @@ const voiceItems = computed(() =>
       :label="$t('tts.options.voice')"
       :loading="voicesStore.loading"
       prepend-inner-icon="mdi-account-voice" />
+
+    <p v-if="voicesStore.usingCache" class="voice-selector__cache-hint">
+      {{ $t("errors.voiceCache") }}
+    </p>
   </div>
 </template>
 
@@ -61,5 +65,11 @@ const voiceItems = computed(() =>
 .voice-selector__summary {
   padding: 12px 14px;
   background: rgba(var(--v-theme-primary), 0.04);
+}
+
+.voice-selector__cache-hint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: rgb(var(--v-theme-warning));
 }
 </style>

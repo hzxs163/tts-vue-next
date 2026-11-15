@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { defineComponent } from "vue";
+import i18n from "../../plugins/i18n";
 import type { Voice } from "../../types";
 import { useTtsStore } from "../../stores/tts";
 
@@ -90,6 +91,7 @@ const sliderStub = defineComponent({
 
 describe("TextToSpeech view", () => {
   beforeEach(() => {
+    i18n.global.locale.value = "en";
     invokeMock.mockReset();
     invokeMock.mockImplementation(async (command: string) => {
       if (command === "get_voices") {
@@ -117,7 +119,7 @@ describe("TextToSpeech view", () => {
       await import("../../views/TextToSpeech.vue");
     const wrapper = mount(TextToSpeech, {
       global: {
-        plugins: [pinia],
+        plugins: [pinia, i18n],
         stubs: {
           VContainer: passthroughStub,
           VRow: passthroughStub,
@@ -149,16 +151,16 @@ describe("TextToSpeech view", () => {
       .map((button) => button.text())
       .filter(Boolean);
 
-    expect(wrapper.text()).toContain("Script Workspace");
+    expect(wrapper.text()).toContain("Text Input");
     expect(wrapper.text()).toContain("Voice Control Dock");
     expect(wrapper.find("textarea").exists()).toBe(true);
     expect(wrapper.find("audio").exists()).toBe(true);
-    expect(buttonLabels).toContain("Clear");
+    expect(wrapper.find('[aria-label="Clear text input"]').exists()).toBe(true);
     expect(buttonLabels).toContain("Generate Speech");
     expect(invokeMock).toHaveBeenCalledWith("get_voices");
   });
 
-  test("renders Aero Glass workspace regions", async () => {
+  test("renders the current workspace regions", async () => {
     const pinia = createPinia();
     setActivePinia(pinia);
 
@@ -166,7 +168,7 @@ describe("TextToSpeech view", () => {
       await import("../../views/TextToSpeech.vue");
     const wrapper = mount(TextToSpeech, {
       global: {
-        plugins: [pinia],
+        plugins: [pinia, i18n],
         stubs: {
           VContainer: passthroughStub,
           VRow: passthroughStub,
@@ -194,16 +196,14 @@ describe("TextToSpeech view", () => {
     await flushPromises();
 
     expect(wrapper.find(".tts-page").exists()).toBe(true);
-    expect(wrapper.find(".tts-page__hero").exists()).toBe(true);
     expect(wrapper.find(".tts-workspace").exists()).toBe(true);
+    expect(wrapper.find(".tts-workspace__input-control").exists()).toBe(true);
     expect(wrapper.find(".tts-workspace__input").exists()).toBe(true);
     expect(wrapper.find(".tts-workspace__control").exists()).toBe(true);
     expect(wrapper.find(".tts-workspace__player").exists()).toBe(true);
     expect(wrapper.find(".options-panel.glass-panel").exists()).toBe(true);
-    expect(wrapper.text()).toContain("Aero Glass Studio");
-    expect(wrapper.text()).toContain(
-      "Create speech with layered voice controls",
-    );
+    expect(wrapper.text()).toContain("Text Input");
+    expect(wrapper.text()).toContain("Voice Control Dock");
     expect(rawTextToSpeechView).not.toContain("calc(100vh");
   });
 });

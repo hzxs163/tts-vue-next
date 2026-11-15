@@ -2,12 +2,62 @@ import { defineStore } from "pinia";
 import { invoke } from "@tauri-apps/api/core";
 import type { Voice } from "../types";
 
+const VOICE_CACHE_KEY = "tts_voices_cache_v1";
+
+interface VoiceCache {
+  savedAt: number;
+  voices: Voice[];
+}
+
 interface VoicesState {
   voices: Voice[];
   loading: boolean;
   error: string | null;
+  usingCache: boolean;
+  cacheSavedAt: number | null;
   selectedLocale: string;
   selectedVoice: string;
+}
+
+function readVoiceCache(): VoiceCache | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(VOICE_CACHE_KEY);
+    if (!raw) {
+      return null;
+    }
+
+    const parsed = JSON.parse(raw) as Partial<VoiceCache>;
+    if (
+      typeof parsed.savedAt !== "number" ||
+      !Array.isArray(parsed.voices) ||
+      parsed.voices.length === 0
+    ) {
+      return null;
+    }
+
+    return { savedAt: parsed.savedAt, voices: parsed.voices };
+  } catch {
+    return null;
+  }
+}
+
+function writeVoiceCache(voices: Voice[]): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(
+      VOICE_CACHE_KEY,
+      JSON.stringify({ savedAt: Date.now(), voices }),
+    );
+  } catch {
+    return;
+  }
 }
 
 function resolveSelection(
@@ -57,6 +107,8 @@ export const useVoicesStore = defineStore("voices", {
     voices: [],
     loading: false,
     error: null,
+    usingCache: false,
+    cacheSavedAt: null,
     selectedLocale: "zh-CN",
     selectedVoice: "zh-CN-XiaoxiaoNeural",
   }),
@@ -97,13 +149,39 @@ export const useVoicesStore = defineStore("voices", {
           this.selectedVoice,
         );
 
+        writeVoiceCache(voices);
         this.$patch({
           voices,
           error: null,
+          usingCache: false,
+          cacheSavedAt: null,
           ...selection,
         });
       } catch (error) {
-        this.$patch({ error: toErrorMessage(error) });
+        const message = toErrorMessage(error);
+        const cached = readVoiceCache();
+
+        if (!cached) {
+          this.$patch({
+            error: message,
+            usingCache: false,
+            cacheSavedAt: null,
+          });
+          return;
+        }
+
+        const selection = resolveSelection(
+          cached.voices,
+          this.selectedLocale,
+          this.selectedVoice,
+        );
+        this.$patch({
+          voices: cached.voices,
+          error: message,
+          usingCache: true,
+          cacheSavedAt: cached.savedAt,
+          ...selection,
+        });
       } finally {
         this.$patch({ loading: false });
       }

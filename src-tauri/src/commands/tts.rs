@@ -279,6 +279,38 @@ mod tests {
         assert!(error.contains("not found"));
     }
 
+    /// Live probe: `cargo test --lib live_ -- --ignored --nocapture`
+    /// Writes the synthesized audio to `.workbuddy/tmp/live_tts_probe.mp3`.
+    #[tokio::test]
+    #[ignore = "live network probe: synthesizes real audio via Microsoft Edge TTS"]
+    async fn live_tts_convert_produces_playable_mp3() {
+        use uuid::Uuid;
+
+        let params = TtsConvertParams {
+            text: "这是一次真实的语音合成测试，用于验证修复后的接口连通性。".to_string(),
+            voice: "zh-CN-XiaoxiaoNeural".to_string(),
+            rate: "+0%".to_string(),
+            pitch: "+0Hz".to_string(),
+            volume: "+0%".to_string(),
+            format: "audio-24khz-48kbitrate-mono-mp3".to_string(),
+            task_id: format!("live-probe-{}", Uuid::new_v4()),
+            max_retries: 1,
+        };
+
+        let audio = tts_convert(params).await.expect("live synthesis failed");
+
+        assert!(audio.len() > 4096, "audio too small: {} bytes", audio.len());
+        assert_eq!(audio[0], 0xFF, "missing MP3 frame sync byte");
+        assert_eq!(audio[1] & 0xE0, 0xE0, "invalid MP3 frame header");
+
+        let output = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../.workbuddy/tmp/live_tts_probe.mp3");
+        std::fs::create_dir_all(output.parent().unwrap()).unwrap();
+        std::fs::write(&output, &audio).unwrap();
+
+        println!("LIVE AUDIO: {} bytes -> {}", audio.len(), output.display());
+    }
+
     async fn clear_active_tasks() {
         ACTIVE_TASKS.lock().await.clear();
     }

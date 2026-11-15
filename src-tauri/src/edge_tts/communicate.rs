@@ -9,9 +9,10 @@ use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
 use url::Url;
 use uuid::Uuid;
 
+use crate::edge_tts::config;
 use crate::edge_tts::constants::{
-    CHROMIUM_MAJOR_VERSION, CONNECT_TIMEOUT_SECS, ORIGIN, RECEIVE_TIMEOUT_SECS, SEC_MS_GEC_VERSION,
-    TRUSTED_CLIENT_TOKEN, USER_AGENT, WSS_URL,
+    CHROMIUM_MAJOR_VERSION, CONNECT_TIMEOUT_SECS, ORIGIN, RECEIVE_TIMEOUT_SECS,
+    TRUSTED_CLIENT_TOKEN,
 };
 use crate::edge_tts::drm::{adjust_clock_skew, generate_muid, generate_sec_ms_gec, js_date_string};
 use crate::edge_tts::errors::EdgeTTSError;
@@ -43,7 +44,7 @@ impl Communicate {
     }
 
     pub async fn stream_audio(&self) -> Result<Vec<u8>, EdgeTTSError> {
-        self.stream_chunk_sequence_with_timeout(WSS_URL, RECEIVE_TIMEOUT, Arc::new(Mutex::new(CommunicateState::default())))
+        self.stream_chunk_sequence_with_timeout(config::get().wss_url.as_str(), RECEIVE_TIMEOUT, Arc::new(Mutex::new(CommunicateState::default())))
             .await
     }
 
@@ -255,9 +256,10 @@ async fn connect_websocket_once(
     })?;
 
     request.headers_mut().insert("Origin", ORIGIN.parse().unwrap());
-    request
-        .headers_mut()
-        .insert("User-Agent", USER_AGENT.parse().unwrap());
+    request.headers_mut().insert(
+        "User-Agent",
+        config::get().user_agent.parse().unwrap(),
+    );
     request.headers_mut().insert(
         "Sec-CH-UA",
         format!(
@@ -302,6 +304,24 @@ async fn connect_websocket_once(
     }
 }
 
+/// Lightweight handshake probe used at application start. A working voice
+/// list endpoint does not prove synthesis works, so the WSS endpoint has to
+/// be checked separately.
+pub async fn probe_wss() -> Result<(), EdgeTTSError> {
+    let url = config::get().wss_url.clone();
+
+    match connect_websocket_once(&url, CONNECT_TIMEOUT).await {
+        Ok(_socket) => Ok(()),
+        Err(ConnectAttemptError::Forbidden(date_header)) => {
+            if let Some(date) = date_header {
+                let _ = adjust_clock_skew(&date);
+            }
+            Err(EdgeTTSError::HttpError(403))
+        }
+        Err(ConnectAttemptError::Edge(error)) => Err(error),
+    }
+}
+
 fn build_websocket_url(base_url: &str) -> Result<String, EdgeTTSError> {
     let mut url = Url::parse(base_url)
         .map_err(|error| EdgeTTSError::ConnectionError(error.to_string()))?;
@@ -311,7 +331,7 @@ fn build_websocket_url(base_url: &str) -> Result<String, EdgeTTSError> {
     url.query_pairs_mut()
         .append_pair("TrustedClientToken", TRUSTED_CLIENT_TOKEN)
         .append_pair("Sec-MS-GEC", &sec_ms_gec)
-        .append_pair("Sec-MS-GEC-Version", SEC_MS_GEC_VERSION)
+        .append_pair("Sec-MS-GEC-Version", config::get().gec_version.as_str())
         .append_pair("ConnectionId", &connection_id);
 
     Ok(url.into())

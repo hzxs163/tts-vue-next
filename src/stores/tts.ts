@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { TtsParams } from "../types";
 import { useVoicesStore } from "./voices";
 import { useSettingsStore } from "./settings";
+import { classifyTtsError, type TtsErrorKind } from "../utils/ttsErrors";
 
 const EDGE_TTS_OUTPUT_FORMAT = "audio-24khz-48kbitrate-mono-mp3";
 
@@ -13,6 +14,7 @@ interface TtsState {
   audioUrl: string | null;
   audioBytes: Uint8Array | null;
   error: string | null;
+  errorKind: TtsErrorKind | null;
   currentTaskId: string | null;
   rate: number;
   pitch: number;
@@ -42,6 +44,7 @@ export const useTtsStore = defineStore("tts", {
     audioUrl: null,
     audioBytes: null,
     error: null,
+    errorKind: null,
     currentTaskId: null,
     rate: 0,
     pitch: 0,
@@ -97,6 +100,7 @@ export const useTtsStore = defineStore("tts", {
         converting: true,
         progress: 0,
         error: null,
+        errorKind: null,
         currentTaskId: taskId,
         audioUrl: null,
         audioBytes: null,
@@ -126,6 +130,7 @@ export const useTtsStore = defineStore("tts", {
 
         this.$patch({
           error: toErrorMessage(error),
+          errorKind: classifyTtsError(error),
           audioBytes: null,
           audioUrl: null,
         });
@@ -161,6 +166,7 @@ export const useTtsStore = defineStore("tts", {
         audioUrl: null,
         audioBytes: null,
         error: null,
+        errorKind: null,
         progress: 0,
         currentTaskId: null,
         requestVersion: this.requestVersion + 1,

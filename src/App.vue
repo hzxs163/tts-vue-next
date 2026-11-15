@@ -3,6 +3,7 @@ import { onMounted, onUnmounted, watch } from "vue";
 import { useTheme } from "vuetify";
 import TitleBar from "./components/layout/TitleBar.vue";
 import AppLayout from "./components/layout/AppLayout.vue";
+import GlobalAlerts from "./components/layout/GlobalAlerts.vue";
 import i18n from "./plugins/i18n";
 import { useSettingsStore } from "./stores/settings";
 import { normalizeAppLanguage, normalizeAppLocale } from "./utils/appLocale";
@@ -55,6 +56,7 @@ watch(() => settingsStore.language, applyLanguage, { immediate: true });
 <template>
   <v-app>
     <MessageProvider>
+      <GlobalAlerts />
       <TitleBar />
       <AppLayout />
     </MessageProvider>

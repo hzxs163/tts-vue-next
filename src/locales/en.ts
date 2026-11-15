@@ -126,4 +126,12 @@ export default {
         "A desktop TTS application powered by Microsoft Edge TTS service and built with Vue 3, Vuetify, and Tauri.",
     },
   },
+  errors: {
+    auth: "Microsoft rejected the speech request (the DRM contract may have changed). Update the app or check the endpoint configuration.",
+    network: "Cannot reach the Microsoft speech service. Check your network or proxy settings.",
+    timeout: "The speech service timed out. Please try again shortly.",
+    cancelled: "Conversion cancelled.",
+    unknown: "Conversion failed: {message}",
+    voiceCache: "Could not refresh the voice list. Using a local cached copy; some voices may be outdated.",
+  },
 } as const;
