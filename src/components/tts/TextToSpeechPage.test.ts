@@ -206,4 +206,50 @@ describe("TextToSpeech view", () => {
     expect(wrapper.text()).toContain("Voice Control Dock");
     expect(rawTextToSpeechView).not.toContain("calc(100vh");
   });
+
+  test("shows the synthesis progress bar while converting", async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+
+    const ttsStore = useTtsStore();
+    ttsStore.$patch({
+      text: "hello",
+      converting: true,
+      progress: 42,
+    });
+
+    const { default: TextToSpeech } =
+      await import("../../views/TextToSpeech.vue");
+    const wrapper = mount(TextToSpeech, {
+      global: {
+        plugins: [pinia, i18n],
+        stubs: {
+          VContainer: passthroughStub,
+          VRow: passthroughStub,
+          VCol: passthroughStub,
+          VCard: passthroughStub,
+          VCardItem: passthroughStub,
+          VAvatar: passthroughStub,
+          VIcon: passthroughStub,
+          VCardTitle: passthroughStub,
+          VCardSubtitle: passthroughStub,
+          VCardText: passthroughStub,
+          VTextarea: textareaStub,
+          VDivider: passthroughStub,
+          VCardActions: passthroughStub,
+          VChip: passthroughStub,
+          VSpacer: passthroughStub,
+          VBtn: buttonStub,
+          VSlider: sliderStub,
+          VSelect: selectStub,
+          VSheet: passthroughStub,
+        },
+      },
+    });
+
+    await flushPromises();
+
+    expect(wrapper.find(".conversion-progress").exists()).toBe(true);
+    expect(wrapper.find(".conversion-progress__value").text()).toBe("42%");
+  });
 });

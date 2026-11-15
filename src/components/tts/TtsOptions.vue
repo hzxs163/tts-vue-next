@@ -143,6 +143,16 @@ async function convertText() {
     </v-card-text>
 
     <v-card-actions class="px-4 pb-4 pt-0 d-flex flex-column ga-3">
+      <div v-if="ttsStore.converting" class="conversion-progress">
+        <v-progress-linear
+          :model-value="ttsStore.progress"
+          height="6"
+          rounded
+          color="primary" />
+        <span class="conversion-progress__value">
+          {{ ttsStore.progress }}%
+        </span>
+      </div>
       <v-btn
         v-if="ttsStore.converting"
         block
@@ -188,5 +198,20 @@ async function convertText() {
 
 .slider-group + .slider-group {
   margin-top: 5px;
+}
+
+.conversion-progress {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.conversion-progress__value {
+  min-width: 38px;
+  text-align: right;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: rgba(var(--v-theme-on-surface), 0.68);
 }
 </style>
