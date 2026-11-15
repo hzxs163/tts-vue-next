@@ -2,15 +2,25 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::sync::{Arc, LazyLock};
 
-use tauri::command;
+use tauri::{command, AppHandle, Emitter};
 use tokio::sync::{watch, Mutex};
 
 use crate::edge_tts::Communicate;
+use crate::edge_tts::constants::DEFAULT_OUTPUT_FORMAT;
 use crate::edge_tts::errors::EdgeTTSError;
 use crate::edge_tts::types::TTSConfig;
 use crate::utils::retry::retry_with_backoff;
 
 const DUPLICATE_TASK_ERROR: &str = "Task already exists";
+const PROGRESS_EVENT: &str = "tts://progress";
+
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TtsProgressEvent {
+    pub task_id: String,
+    pub completed: usize,
+    pub total: usize,
+}
 
 static ACTIVE_TASKS: LazyLock<Arc<Mutex<HashMap<String, watch::Sender<bool>>>>> =
     LazyLock::new(|| Arc::new(Mutex::new(HashMap::new())));
@@ -30,7 +40,7 @@ pub struct TtsConvertParams {
 }
 
 fn default_format() -> String {
-    "audio-24khz-48kbitrate-mono-mp3".to_string()
+    DEFAULT_OUTPUT_FORMAT.to_string()
 }
 
 fn default_retries() -> u32 {
@@ -39,18 +49,38 @@ fn default_retries() -> u32 {
 
 #[command]
 pub async fn tts_convert(
+    app: AppHandle,
     params: TtsConvertParams,
 ) -> Result<tauri::ipc::Response, String> {
-    let audio = synthesize(params).await?;
+    let task_id = params.task_id.clone();
+    let on_progress = move |completed: usize, total: usize| {
+        let _ = app.emit(
+            PROGRESS_EVENT,
+            TtsProgressEvent {
+                task_id: task_id.clone(),
+                completed,
+                total,
+            },
+        );
+    };
+
+    let audio = synthesize(params, on_progress).await?;
     // Raw IPC body instead of a JSON number array: a 1 MB MP3 otherwise
     // expands to roughly 3-4 MB of JSON text on every conversion.
     Ok(tauri::ipc::Response::new(audio))
 }
 
-async fn synthesize(params: TtsConvertParams) -> Result<Vec<u8>, String> {
-    run_tts_convert(params, 1000, |text, config, cancel_rx| async move {
-        let communicate = Communicate::new(text, config, cancel_rx);
-        communicate.stream_audio().await
+async fn synthesize<F>(params: TtsConvertParams, on_progress: F) -> Result<Vec<u8>, String>
+where
+    F: Fn(usize, usize) + Send + Sync + Clone + 'static,
+{
+    run_tts_convert(params, 1000, move |text, config, cancel_rx| {
+        let on_progress = on_progress.clone();
+        async move {
+            let communicate =
+                Communicate::new(text, config, cancel_rx).with_progress(on_progress);
+            communicate.stream_audio().await
+        }
     })
     .await
 }
@@ -306,7 +336,9 @@ mod tests {
             max_retries: 1,
         };
 
-        let audio = synthesize(params).await.expect("live synthesis failed");
+        let audio = synthesize(params, |_: usize, _: usize| {})
+            .await
+            .expect("live synthesis failed");
 
         assert!(audio.len() > 4096, "audio too small: {} bytes", audio.len());
         assert_eq!(audio[0], 0xFF, "missing MP3 frame sync byte");

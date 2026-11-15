@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { onMounted, watch } from "vue";
+import { onMounted, onUnmounted, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { useMessage } from "vuetify-message-vue3";
+import { useBatchStore } from "../../stores/batch";
 import { useTtsStore } from "../../stores/tts";
 import { useVoicesStore } from "../../stores/voices";
 import {
@@ -11,12 +13,14 @@ import {
   ttsErrorKey,
   type TtsErrorKind,
 } from "../../utils/ttsErrors";
-import type { ServiceStatus } from "../../types";
+import type { ServiceStatus, TtsProgressEvent } from "../../types";
 
 const { t } = useI18n();
 const message = useMessage();
 const ttsStore = useTtsStore();
+const batchStore = useBatchStore();
 const voicesStore = useVoicesStore();
+let unlistenProgress: (() => void) | undefined;
 
 function notify(kind: TtsErrorKind, detail: string) {
   message.error(t(ttsErrorKey(kind), { message: detail }));
@@ -49,6 +53,18 @@ watch(
 
 onMounted(async () => {
   try {
+    unlistenProgress = await listen<TtsProgressEvent>(
+      "tts://progress",
+      ({ payload }) => {
+        ttsStore.applyProgress(payload);
+        batchStore.applyProgress(payload);
+      },
+    );
+  } catch {
+    // Progress events are best-effort; conversion still works without them.
+  }
+
+  try {
     const status = await invoke<ServiceStatus>("check_tts_service");
     if (!status.ok) {
       notify(classifyServiceError(status.code, status.message), status.message);
@@ -56,6 +72,11 @@ onMounted(async () => {
   } catch (error) {
     notify("network", String(error));
   }
+});
+
+onUnmounted(() => {
+  unlistenProgress?.();
+  unlistenProgress = undefined;
 });
 </script>
 

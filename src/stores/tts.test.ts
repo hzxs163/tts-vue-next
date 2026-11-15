@@ -237,4 +237,24 @@ describe("useTtsStore", () => {
     expect(store.error).toBeNull();
     expect(store.progress).toBe(0);
   });
+
+  test("applies chunk progress only for the active task", async () => {
+    const { useTtsStore } = await import("./tts");
+    const store = useTtsStore();
+
+    store.$patch({
+      converting: true,
+      currentTaskId: "task-123",
+      progress: 0,
+    });
+
+    store.applyProgress({ taskId: "task-123", completed: 1, total: 4 });
+    expect(store.progress).toBe(25);
+
+    store.applyProgress({ taskId: "other-task", completed: 4, total: 4 });
+    expect(store.progress).toBe(25);
+
+    store.applyProgress({ taskId: "task-123", completed: 4, total: 4 });
+    expect(store.progress).toBe(99);
+  });
 });

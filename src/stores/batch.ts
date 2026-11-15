@@ -1,7 +1,7 @@
 import i18n from "../plugins/i18n";
 import { defineStore } from "pinia";
 import { invoke } from "@tauri-apps/api/core";
-import type { BatchFile, OutputFormat, TtsParams } from "../types";
+import type { BatchFile, OutputFormat, TtsParams, TtsProgressEvent } from "../types";
 import { useSettingsStore } from "./settings";
 import { useVoicesStore } from "./voices";
 import { bytesToBase64 } from "../utils/bytes";
@@ -92,6 +92,24 @@ export const useBatchStore = defineStore("batch", {
   }),
 
   actions: {
+    applyProgress(event: TtsProgressEvent) {
+      if (!this.converting || event.total <= 0) {
+        return;
+      }
+
+      const file = this.files.find((item) => item.id === event.taskId);
+      if (!file || file.status !== "processing") {
+        return;
+      }
+
+      const ratio = Math.min(1, event.completed / event.total);
+      this.$patch((state) => {
+        state.files = updateFile(state.files, event.taskId, {
+          progress: 30 + Math.round(50 * ratio),
+        });
+      });
+    },
+
     addFiles(filePaths: string[]) {
       const knownPaths = new Set(this.files.map((file) => file.path));
       const uniquePaths = filePaths.filter((path) => {

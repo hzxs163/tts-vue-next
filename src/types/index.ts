@@ -45,6 +45,12 @@ export interface TtsSettings {
   themeMode: ThemeMode;
 }
 
+export interface TtsProgressEvent {
+  taskId: string;
+  completed: number;
+  total: number;
+}
+
 export interface ServiceStatus {
   ok: boolean;
   code: "ok" | "auth" | "network" | "timeout";

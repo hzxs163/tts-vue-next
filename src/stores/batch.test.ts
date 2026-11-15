@@ -298,4 +298,26 @@ describe("useBatchStore", () => {
     });
     expect(store.files[0].error).toBeUndefined();
   });
+
+  test("applies chunk progress to the matching processing file", async () => {
+    const { useBatchStore } = await import("./batch");
+    const store = useBatchStore();
+
+    store.addFiles(["C:/docs/alpha.txt"]);
+    store.$patch({
+      converting: true,
+      files: store.files.map((file) => ({
+        ...file,
+        status: "processing" as const,
+        progress: 30,
+      })),
+    });
+
+    const fileId = store.files[0]?.id ?? "";
+    store.applyProgress({ taskId: fileId, completed: 1, total: 2 });
+    expect(store.files[0]?.progress).toBe(55);
+
+    store.applyProgress({ taskId: "unknown", completed: 2, total: 2 });
+    expect(store.files[0]?.progress).toBe(55);
+  });
 });

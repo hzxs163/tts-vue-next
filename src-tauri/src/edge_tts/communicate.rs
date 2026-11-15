@@ -32,6 +32,7 @@ pub struct Communicate {
     config: TTSConfig,
     text: String,
     cancel_rx: watch::Receiver<bool>,
+    progress: Option<Arc<dyn Fn(usize, usize) + Send + Sync>>,
 }
 
 impl Communicate {
@@ -40,7 +41,17 @@ impl Communicate {
             config,
             text,
             cancel_rx,
+            progress: None,
         }
+    }
+
+    /// Subscribe to `(completed_chunks, total_chunks)` updates.
+    pub fn with_progress<F>(mut self, callback: F) -> Self
+    where
+        F: Fn(usize, usize) + Send + Sync + 'static,
+    {
+        self.progress = Some(Arc::new(callback));
+        self
     }
 
     pub async fn stream_audio(&self) -> Result<Vec<u8>, EdgeTTSError> {
@@ -48,15 +59,7 @@ impl Communicate {
             .await
     }
 
-    async fn stream_audio_from_url(&self, base_url: &str) -> Result<Vec<u8>, EdgeTTSError> {
-        self.stream_chunk_sequence_with_timeout(
-            base_url,
-            RECEIVE_TIMEOUT,
-            Arc::new(Mutex::new(CommunicateState::default())),
-        )
-        .await
-    }
-
+    #[cfg(test)]
     async fn stream_audio_with_timeout(
         &self,
         base_url: &str,
@@ -87,7 +90,7 @@ impl Communicate {
 
         let mut all_audio = Vec::new();
 
-        for chunk_text in &chunks {
+        for (index, chunk_text) in chunks.iter().enumerate() {
             if *self.cancel_rx.borrow() {
                 return Err(EdgeTTSError::Cancelled);
             }
@@ -106,6 +109,10 @@ impl Communicate {
             state.cumulative_audio_bytes += state.chunk_audio_bytes;
             state.offset_compensation = state.cumulative_audio_bytes;
             state.last_duration_offset = state.cumulative_audio_bytes;
+
+            if let Some(callback) = &self.progress {
+                callback(index + 1, chunks.len());
+            }
         }
 
         if all_audio.is_empty() {
@@ -568,7 +575,15 @@ mod tests {
         let base_url =
             spawn_chunked_audio_server(payloads, Arc::clone(&connection_count)).await;
         let (_cancel_tx, cancel_rx) = watch::channel(false);
-        let communicate = Communicate::new(text, TTSConfig::default(), cancel_rx);
+        let progress = Arc::new(std::sync::Mutex::new(Vec::<(usize, usize)>::new()));
+        let progress_for_callback = Arc::clone(&progress);
+        let communicate = Communicate::new(text, TTSConfig::default(), cancel_rx)
+            .with_progress(move |completed, total| {
+                progress_for_callback
+                    .lock()
+                    .unwrap()
+                    .push((completed, total));
+            });
 
         let audio = communicate
             .stream_chunk_sequence_with_timeout(&base_url, RECEIVE_TIMEOUT, Arc::clone(&state))
@@ -581,6 +596,9 @@ mod tests {
         assert_eq!(state.offset_compensation, expected_total);
         assert_eq!(state.last_duration_offset, expected_total);
         assert_eq!(connection_count.load(Ordering::SeqCst), chunks.len());
+        let events = progress.lock().unwrap();
+        assert_eq!(events.len(), chunks.len());
+        assert_eq!(events.last().copied(), Some((chunks.len(), chunks.len())));
     }
 
     #[tokio::test]
@@ -652,6 +670,7 @@ mod tests {
         format!("ws://{address}/edge/v1")
     }
 
+    #[allow(dead_code)]
     async fn spawn_unknown_path_websocket_server(path: &'static str) -> String {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();

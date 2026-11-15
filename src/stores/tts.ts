@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import { invoke } from "@tauri-apps/api/core";
-import type { TtsParams } from "../types";
+import type { TtsParams, TtsProgressEvent } from "../types";
 import { useVoicesStore } from "./voices";
 import { useSettingsStore } from "./settings";
 import { classifyTtsError, type TtsErrorKind } from "../utils/ttsErrors";
@@ -73,6 +73,24 @@ export const useTtsStore = defineStore("tts", {
   actions: {
     setText(text: string) {
       this.$patch({ text });
+    },
+
+    applyProgress(event: TtsProgressEvent) {
+      if (
+        !this.converting ||
+        !this.currentTaskId ||
+        this.currentTaskId !== event.taskId ||
+        event.total <= 0
+      ) {
+        return;
+      }
+
+      this.$patch({
+        progress: Math.min(
+          99,
+          Math.round((event.completed / event.total) * 100),
+        ),
+      });
     },
 
     async convert() {
