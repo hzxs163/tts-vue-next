@@ -4,6 +4,7 @@ import { useI18n } from "vue-i18n";
 import { useMessage } from "vuetify-message-vue3";
 import { useSettingsStore } from "../../stores/settings";
 import { useTtsStore } from "../../stores/tts";
+import { bytesToBase64 } from "../../utils/bytes";
 
 const ttsStore = useTtsStore();
 const settingsStore = useSettingsStore();
@@ -112,7 +113,7 @@ async function saveAudio() {
       return;
     }
 
-    const audioData = Array.from(ttsStore.audioBytes);
+    const audioData = bytesToBase64(ttsStore.audioBytes ?? new Uint8Array());
 
     if (ext === "mp3") {
       await invoke("write_binary_file", {

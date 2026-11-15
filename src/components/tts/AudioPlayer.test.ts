@@ -117,7 +117,7 @@ describe("AudioPlayer", () => {
 
     expect(invokeMock).toHaveBeenCalledWith("write_binary_file", {
       path: "/tmp/output.mp3",
-      data: [1, 2, 3],
+      data: "AQID",
     });
     expect(writeFileMock).not.toHaveBeenCalled();
   });

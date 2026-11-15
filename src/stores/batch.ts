@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { BatchFile, OutputFormat, TtsParams } from "../types";
 import { useSettingsStore } from "./settings";
 import { useVoicesStore } from "./voices";
+import { bytesToBase64 } from "../utils/bytes";
 
 const EDGE_TTS_OUTPUT_FORMAT = "audio-24khz-48kbitrate-mono-mp3";
 const DEFAULT_RATE = "+0%";
@@ -202,7 +203,7 @@ export const useBatchStore = defineStore("batch", {
           });
 
           const audioBuffer = await invoke<ArrayBuffer>("tts_convert", { params });
-          const audioData = Array.from(new Uint8Array(audioBuffer));
+          const audioData = bytesToBase64(new Uint8Array(audioBuffer));
 
           this.$patch((state) => {
             state.files = updateFile(state.files, file.id, { progress: 80 });

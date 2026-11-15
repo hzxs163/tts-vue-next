@@ -102,7 +102,7 @@ describe("useBatchStore", () => {
     });
     expect(invokeMock).toHaveBeenCalledWith("write_binary_file", {
       path: "C:/exports/alpha.mp3",
-      data: [1, 2, 3],
+      data: "AQID",
     });
     expect(store.files[0]).toMatchObject({
       status: "done",
@@ -141,7 +141,7 @@ describe("useBatchStore", () => {
 
     expect(invokeMock).toHaveBeenCalledWith("write_binary_file", {
       path: "C:/exports/alpha.wav.tmp.mp3",
-      data: [1, 2, 3],
+      data: "AQID",
     });
     expect(invokeMock).toHaveBeenCalledWith("convert_audio_format", {
       inputPath: "C:/exports/alpha.wav.tmp.mp3",
@@ -204,7 +204,7 @@ describe("useBatchStore", () => {
 
     const writeCalls = invokeMock.mock.calls.filter(
       ([command]) => command === "write_binary_file",
-    ) as Array<[string, { path: string; data: number[] }]>;
+    ) as Array<[string, { path: string; data: string }]>;
 
     expect(writeCalls.map(([, payload]) => payload.path)).toEqual([
       "C:/exports/alpha.mp3",

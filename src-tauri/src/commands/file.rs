@@ -1,5 +1,7 @@
 use std::path::Path;
 
+use base64::engine::general_purpose::STANDARD;
+use base64::Engine as _;
 use pulldown_cmark::{Event, Parser, Tag, TagEnd};
 use tauri::command;
 use tauri_plugin_dialog::DialogExt;
@@ -79,11 +81,17 @@ pub async fn show_in_folder(path: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Audio bytes arrive as base64: a JSON number array would inflate a 1 MB MP3
+/// to roughly 3-4 MB of IPC payload on the write path.
 #[command]
-pub async fn write_binary_file(path: String, data: Vec<u8>) -> Result<(), String> {
+pub async fn write_binary_file(path: String, data: String) -> Result<(), String> {
     validate_audio_output_path(&path)?;
 
-    tokio::fs::write(&path, data)
+    let bytes = STANDARD
+        .decode(data.as_bytes())
+        .map_err(|error| format!("Invalid base64 audio data: {error}"))?;
+
+    tokio::fs::write(&path, bytes)
         .await
         .map_err(|error| format!("Failed to write file: {error}"))
 }
@@ -334,7 +342,7 @@ mod tests {
     async fn test_write_binary_file_writes_bytes_to_disk() {
         let path = unique_temp_path("mp3");
 
-        write_binary_file(path.to_string_lossy().into_owned(), vec![1, 2, 3])
+        write_binary_file(path.to_string_lossy().into_owned(), "AQID".to_string())
             .await
             .unwrap();
 
@@ -360,7 +368,7 @@ mod tests {
     async fn test_write_binary_file_rejects_non_audio_path() {
         let path = unique_temp_path("txt");
 
-        let error = write_binary_file(path.to_string_lossy().into_owned(), vec![1, 2, 3])
+        let error = write_binary_file(path.to_string_lossy().into_owned(), "AQID".to_string())
             .await
             .unwrap_err();
 
