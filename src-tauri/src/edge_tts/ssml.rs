@@ -8,6 +8,13 @@ pub static BREAK_TAG_REGEX: LazyLock<regex::Regex> = LazyLock::new(|| {
     .expect("invalid BREAK_TAG_REGEX")
 });
 
+/// Parses the duration of a pause tag.
+///
+/// The unit may be omitted, in which case the value is interpreted by its
+/// magnitude: values up to `10` are read as seconds and larger values as
+/// milliseconds. That covers the plausible range of both notations
+/// (`[停顿 1]` = 1 s, `[停顿 500]` = 500 ms) without requiring the unit, but
+/// the boundary is sharp - always prefer writing the unit explicitly.
 pub fn parse_break_duration_ms(captures: &regex::Captures) -> Option<u64> {
     let (val_str, unit_str) = if let Some(val) = captures.get(1) {
         (val.as_str(), captures.get(2).map(|m| m.as_str()).unwrap_or(""))
@@ -59,6 +66,11 @@ pub fn generate_silent_mp3(duration_ms: u64) -> Vec<u8> {
     result
 }
 
+/// Escapes XML special characters in user text.
+///
+/// Pause tags are not handled here: `split_text::plan_synthesis_chunks`
+/// extracts them and turns them into explicit silent MP3 frames, which gives
+/// an exact pause length instead of the service's own `<break>` handling.
 pub fn xml_escape(text: &str) -> String {
     let mut result = String::with_capacity(text.len());
 
@@ -71,41 +83,6 @@ pub fn xml_escape(text: &str) -> String {
             '\'' => result.push_str("&apos;"),
             _ => result.push(ch),
         }
-    }
-
-    result
-}
-
-/// Escapes XML special characters in user text while preserving and normalizing
-/// user pause tags (`[停顿 500ms]`, `[pause 1s]`, `<break time="500ms" />`).
-#[allow(dead_code)]
-pub fn escape_text_with_breaks(text: &str) -> String {
-    let mut result = String::with_capacity(text.len());
-    let mut last_end = 0;
-
-    for caps in BREAK_TAG_REGEX.find_iter(text) {
-        let match_start = caps.start();
-        let match_end = caps.end();
-
-        if match_start > last_end {
-            result.push_str(&xml_escape(&text[last_end..match_start]));
-        }
-
-        let captures = BREAK_TAG_REGEX
-            .captures(&text[match_start..match_end])
-            .unwrap();
-
-        if let Some(millis) = parse_break_duration_ms(&captures) {
-            result.push_str(&format!(r#"<break time="{millis}ms" />"#));
-        } else {
-            result.push_str(&xml_escape(&text[match_start..match_end]));
-        }
-
-        last_end = match_end;
-    }
-
-    if last_end < text.len() {
-        result.push_str(&xml_escape(&text[last_end..]));
     }
 
     result
@@ -174,27 +151,35 @@ mod tests {
     }
 
     #[test]
-    fn test_escape_text_with_breaks() {
-        assert_eq!(
-            escape_text_with_breaks("你好 [停顿 500ms] 世界 & 朋友"),
-            r#"你好 <break time="500ms" /> 世界 &amp; 朋友"#
-        );
-        assert_eq!(
-            escape_text_with_breaks("Wait [pause 1.5s] done."),
-            r#"Wait <break time="1500ms" /> done."#
-        );
-        assert_eq!(
-            escape_text_with_breaks("你好【停顿 1s】世界"),
-            r#"你好<break time="1000ms" />世界"#
-        );
-        assert_eq!(
-            escape_text_with_breaks(r#"A <break time="800ms" /> B"#),
-            r#"A <break time="800ms" /> B"#
-        );
-        assert_eq!(
-            escape_text_with_breaks("测试 [停顿 10s]"),
-            r#"测试 <break time="10000ms" />"#
-        );
+    fn test_parse_break_duration_ms_uses_the_explicit_unit() {
+        assert_eq!(parse_duration("[停顿 500ms]"), Some(500));
+        assert_eq!(parse_duration("[停顿 1s]"), Some(1000));
+        assert_eq!(parse_duration("[pause 1.5s]"), Some(1500));
+        assert_eq!(parse_duration("[停顿 2秒]"), Some(2000));
+        assert_eq!(parse_duration("[停顿 250毫秒]"), Some(250));
+    }
+
+    #[test]
+    fn test_parse_break_duration_ms_infers_the_unit_from_the_magnitude() {
+        // Without a unit, small values are read as seconds and larger ones as
+        // milliseconds. The boundary is sharp, which is why the UI always
+        // writes the unit explicitly.
+        assert_eq!(parse_duration("[停顿 1]"), Some(1000));
+        assert_eq!(parse_duration("[停顿 0.5]"), Some(500));
+        assert_eq!(parse_duration("[停顿 10]"), Some(10_000));
+        assert_eq!(parse_duration("[停顿 500]"), Some(500));
+        assert_eq!(parse_duration("[停顿 50]"), Some(50));
+    }
+
+    #[test]
+    fn test_parse_break_duration_ms_clamps_to_the_supported_range() {
+        assert_eq!(parse_duration("[停顿 0ms]"), Some(10));
+        assert_eq!(parse_duration("[停顿 60s]"), Some(30_000));
+    }
+
+    fn parse_duration(tag: &str) -> Option<u64> {
+        let captures = BREAK_TAG_REGEX.captures(tag)?;
+        parse_break_duration_ms(&captures)
     }
 
     #[test]
@@ -204,6 +189,9 @@ mod tests {
         assert_eq!(audio_1s.len(), 42 * 144);
         assert_eq!(audio_1s[0], 0xFF);
         assert_eq!(audio_1s[1], 0xF3);
+        // 0x64 => MPEG-2 Layer III, 48 kbps, 24000 Hz. The frame length of 144
+        // bytes is only valid at 24000 Hz; 0x60 (22050 Hz) would require
+        // 72 * 48000 / 22050 = 156.7 bytes and break decoder frame sync.
         assert_eq!(audio_1s[2], 0x64);
         assert_eq!(audio_1s[3], 0xC4);
     }

@@ -7,12 +7,21 @@ describe("audioConcat", () => {
     expect(silent24ms.length).toBe(144);
     expect(silent24ms[0]).toBe(0xff);
     expect(silent24ms[1]).toBe(0xf3);
-    expect(silent24ms[2]).toBe(0x60);
+    // 0x64 => MPEG-2 Layer III, 48 kbps, 24000 Hz. Must match the Edge TTS
+    // stream this silence is spliced into; 0x60 would mean 22050 Hz and a
+    // non-integer 156.7-byte frame length, which breaks decoder frame sync.
+    expect(silent24ms[2]).toBe(0x64);
     expect(silent24ms[3]).toBe(0xc4);
     expect(silent24ms[4]).toBe(0x00);
 
     const silent48ms = generateSilentMp3Bytes(48);
     expect(silent48ms.length).toBe(288);
+  });
+
+  it("keeps every generated frame aligned to the 144 byte grid", () => {
+    for (const duration of [1, 23, 24, 25, 300, 1000]) {
+      expect(generateSilentMp3Bytes(duration).length % 144).toBe(0);
+    }
   });
 
   it("returns empty Uint8Array for zero or negative duration", () => {
