@@ -168,3 +168,34 @@ export type FileNamePattern = "content" | "timestamp" | "content_timestamp" | "d
 export type ConflictStrategy = "overwrite" | "skip" | "rename";
 export type AppLanguage = "zh-CN" | "en-US";
 export type ThemeMode = "system" | "light" | "dark";
+
+export type DuckingStrength = "gentle" | "medium" | "strong";
+
+export interface DuckingPreset {
+  ratio: number;
+  threshold: number;
+}
+
+export interface BgmSettings {
+  enabled: boolean;
+  bgmPath: string;
+  bgmName: string;
+  bgmVolume: number;
+  enableDucking: boolean;
+  duckingStrength: DuckingStrength;
+  duckingRatio: number;
+  duckingThreshold: number;
+  fadeOutSec: number;
+}
+
+export interface BgmMixParams {
+  vocal_path: string;
+  bgm_path: string;
+  output_path: string;
+  bgm_volume: number;
+  enable_ducking: boolean;
+  ducking_ratio: number;
+  ducking_threshold: number;
+  fade_out_sec: number;
+  format: string;
+}

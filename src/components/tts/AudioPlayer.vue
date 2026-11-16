@@ -5,12 +5,14 @@ import { useI18n } from "vue-i18n";
 import { useMessage } from "vuetify-message-vue3";
 import { useSettingsStore } from "../../stores/settings";
 import { useTtsStore } from "../../stores/tts";
+import { useBgmStore } from "../../stores/bgm";
 import { buildDefaultFileName } from "../../utils/fileName";
 import { saveAudioBytes } from "../../utils/saveAudio";
 import { toErrorMessage } from "../../utils/ttsErrors";
 
 const ttsStore = useTtsStore();
 const settingsStore = useSettingsStore();
+const bgmStore = useBgmStore();
 const message = useMessage();
 const { t } = useI18n();
 
@@ -125,7 +127,19 @@ async function saveAudio() {
       return;
     }
 
-    const { cleanupError } = await saveAudioBytes(audioBytes, filePath, ext);
+    const bgmOptions = bgmStore.isConfigured
+      ? {
+          enabled: bgmStore.enabled,
+          bgmPath: bgmStore.bgmPath,
+          bgmVolume: bgmStore.bgmVolume,
+          enableDucking: bgmStore.enableDucking,
+          duckingRatio: bgmStore.duckingRatio,
+          duckingThreshold: bgmStore.duckingThreshold,
+          fadeOutSec: bgmStore.fadeOutSec,
+        }
+      : undefined;
+
+    const { cleanupError } = await saveAudioBytes(audioBytes, filePath, ext, bgmOptions);
     if (cleanupError) {
       throw new Error(cleanupError);
     }

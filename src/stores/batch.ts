@@ -13,6 +13,7 @@ import type {
 import { useSettingsStore } from "./settings";
 import { useVoicesStore } from "./voices";
 import { useDictionaryStore } from "./dictionary";
+import { useBgmStore } from "./bgm";
 import { saveAudioBytes } from "../utils/saveAudio";
 import { toErrorMessage } from "../utils/ttsErrors";
 
@@ -323,10 +324,24 @@ export const useBatchStore = defineStore("batch", {
             state.files = updateFile(state.files, file.id, { progress: 80 });
           });
 
+          const bgmStore = useBgmStore();
+          const bgmOptions = bgmStore.isConfigured
+            ? {
+                enabled: bgmStore.enabled,
+                bgmPath: bgmStore.bgmPath,
+                bgmVolume: bgmStore.bgmVolume,
+                enableDucking: bgmStore.enableDucking,
+                duckingRatio: bgmStore.duckingRatio,
+                duckingThreshold: bgmStore.duckingThreshold,
+                fadeOutSec: bgmStore.fadeOutSec,
+              }
+            : undefined;
+
           const { cleanupError, cleanupPath } = await saveAudioBytes(
             new Uint8Array(audioBuffer),
             outputPath,
             snapshot.outputFormat,
+            bgmOptions,
           );
 
           if (snapshot.exportSubtitles) {

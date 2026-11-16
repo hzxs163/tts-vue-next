@@ -107,6 +107,7 @@ async function mountSettings() {
         VTextField: textFieldStub,
         VSelect: selectStub,
         VSwitch: switchStub,
+        BgmConfigCard: true,
       },
     },
   });

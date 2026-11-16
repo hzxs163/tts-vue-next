@@ -93,4 +93,50 @@ describe("saveAudioBytes", () => {
     );
     expect(invokeMock).not.toHaveBeenCalledWith("remove_file", expect.anything());
   });
+
+  test("mixes BGM when bgmOptions is enabled", async () => {
+    invokeMock.mockResolvedValue(undefined);
+
+    const bgmOptions = {
+      enabled: true,
+      bgmPath: "C:/music/bgm.mp3",
+      bgmVolume: 0.35,
+      enableDucking: true,
+      duckingRatio: 4.0,
+      duckingThreshold: 0.08,
+      fadeOutSec: 2.0,
+    };
+
+    const result = await saveAudioBytes(
+      new Uint8Array([1, 2, 3]),
+      "C:/out/drama.mp3",
+      "mp3",
+      bgmOptions,
+    );
+
+    expect(invokeMock.mock.calls.map(([command]) => command)).toEqual([
+      "write_binary_file",
+      "mix_bgm",
+      "remove_file",
+    ]);
+
+    expect(invokeMock).toHaveBeenCalledWith("mix_bgm", {
+      params: {
+        vocal_path: "C:/out/drama.mp3.tmp.mp3",
+        bgm_path: "C:/music/bgm.mp3",
+        output_path: "C:/out/drama.mp3",
+        bgm_volume: 0.35,
+        enable_ducking: true,
+        ducking_ratio: 4.0,
+        ducking_threshold: 0.08,
+        fade_out_sec: 2.0,
+        format: "mp3",
+      },
+    });
+
+    expect(result).toEqual({
+      cleanupError: null,
+      cleanupPath: "C:/out/drama.mp3.tmp.mp3",
+    });
+  });
 });

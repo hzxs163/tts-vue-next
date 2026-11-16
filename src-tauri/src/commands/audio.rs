@@ -16,6 +16,12 @@ pub async fn convert_audio_format(
     ffmpeg::convert_audio(&input_path, &output_path, &format).await
 }
 
+#[command]
+pub async fn mix_bgm(params: ffmpeg::BgmMixParams) -> Result<(), String> {
+    validate_audio_output_path(&params.output_path)?;
+    ffmpeg::mix_bgm_audio(&params).await
+}
+
 fn validate_audio_output_path(path: &str) -> Result<(), String> {
     let file_path = Path::new(path);
     let Some(file_name) = file_path.file_name().and_then(|value| value.to_str()) else {
@@ -127,6 +133,44 @@ mod tests {
 
         assert_eq!(error, "Unsupported output file type: .txt");
         let _ = tokio::fs::remove_file(input_path).await;
+    }
+
+    #[tokio::test]
+    async fn test_mix_bgm_rejects_invalid_output_extension() {
+        let output_path = unique_temp_path("bad");
+        let params = ffmpeg::BgmMixParams {
+            vocal_path: "vocal.mp3".to_string(),
+            bgm_path: "bgm.mp3".to_string(),
+            output_path: output_path.to_string_lossy().into_owned(),
+            bgm_volume: 0.3,
+            enable_ducking: true,
+            ducking_ratio: 4.0,
+            ducking_threshold: 0.1,
+            fade_out_sec: 2.0,
+            format: "mp3".to_string(),
+        };
+
+        let error = mix_bgm(params).await.unwrap_err();
+        assert!(error.contains("Unsupported output file type"));
+    }
+
+    #[tokio::test]
+    async fn test_mix_bgm_rejects_missing_vocal() {
+        let output_path = unique_temp_path("mp3");
+        let params = ffmpeg::BgmMixParams {
+            vocal_path: "nonexistent_vocal.mp3".to_string(),
+            bgm_path: "bgm.mp3".to_string(),
+            output_path: output_path.to_string_lossy().into_owned(),
+            bgm_volume: 0.3,
+            enable_ducking: true,
+            ducking_ratio: 4.0,
+            ducking_threshold: 0.1,
+            fade_out_sec: 2.0,
+            format: "mp3".to_string(),
+        };
+
+        let error = mix_bgm(params).await.unwrap_err();
+        assert!(error.contains("Vocal audio file not found"));
     }
 
     fn unique_temp_audio_path() -> PathBuf {

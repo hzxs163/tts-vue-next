@@ -35,6 +35,7 @@ pub fn run() {
             commands::file::remove_file,
             commands::file::resolve_output_path,
             commands::audio::convert_audio_format,
+            commands::audio::mix_bgm,
         ])
         .setup(|app| {
             crate::utils::log::init(app.handle());

@@ -5,6 +5,7 @@ import { useI18n } from "vue-i18n";
 import { useMessage } from "vuetify-message-vue3";
 import type { ConflictStrategy, FileNamePattern } from "../types";
 import { useSettingsStore } from "../stores/settings";
+import BgmConfigCard from "../components/common/BgmConfigCard.vue";
 
 const settingsStore = useSettingsStore();
 const message = useMessage();
@@ -184,6 +185,10 @@ async function selectSavePath() {
                   @update:model-value="settingsStore.updateChunkConcurrency"
                 />
               </div>
+            </section>
+
+            <section class="settings-group settings-group--bgm">
+              <BgmConfigCard :elevation="0" />
             </section>
           </div>
         </v-card-text>

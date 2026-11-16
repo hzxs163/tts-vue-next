@@ -81,6 +81,103 @@ pub async fn convert_audio(
     replace_file(&temp_path, target_path).await
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct BgmMixParams {
+    pub vocal_path: String,
+    pub bgm_path: String,
+    pub output_path: String,
+    pub bgm_volume: f32,
+    pub enable_ducking: bool,
+    pub ducking_ratio: f32,
+    pub ducking_threshold: f32,
+    pub fade_out_sec: f32,
+    pub format: String,
+}
+
+pub async fn mix_bgm_audio(params: &BgmMixParams) -> Result<(), String> {
+    validate_format(&params.format)?;
+
+    let vocal = Path::new(&params.vocal_path);
+    if !vocal.is_file() {
+        return Err(format!("Vocal audio file not found: {}", params.vocal_path));
+    }
+
+    let bgm = Path::new(&params.bgm_path);
+    if !bgm.is_file() {
+        return Err(format!("BGM audio file not found: {}", params.bgm_path));
+    }
+
+    let resolved_program = resolve_ffmpeg_program()?;
+    let target_path = Path::new(&params.output_path);
+    let temp_path = partial_path(target_path);
+
+    let volume = params.bgm_volume.clamp(0.01, 2.0);
+    let ratio = params.ducking_ratio.clamp(1.5, 20.0);
+    let threshold = params.ducking_threshold.clamp(0.01, 0.5);
+    let dropout = params.fade_out_sec.clamp(0.0, 5.0);
+
+    let filtergraph = if params.enable_ducking {
+        format!(
+            "[0:a]aformat=sample_rates=44100:channel_layouts=stereo,asplit=2[vocal_sc][vocal_mix];[1:a]aformat=sample_rates=44100:channel_layouts=stereo,volume={volume}[bgm];[bgm][vocal_sc]sidechaincompress=threshold={threshold}:ratio={ratio}:attack=100:release=400[ducked];[vocal_mix][ducked]amix=inputs=2:duration=first:dropout_transition={dropout}[out]"
+        )
+    } else {
+        format!(
+            "[0:a]aformat=sample_rates=44100:channel_layouts=stereo[vocal_mix];[1:a]aformat=sample_rates=44100:channel_layouts=stereo,volume={volume}[bgm];[vocal_mix][bgm]amix=inputs=2:duration=first:dropout_transition={dropout}[out]"
+        )
+    };
+
+    let mut command = Command::new(&resolved_program.program);
+    command
+        .kill_on_drop(true)
+        .arg("-i")
+        .arg(&params.vocal_path)
+        .arg("-stream_loop")
+        .arg("-1")
+        .arg("-i")
+        .arg(&params.bgm_path)
+        .arg("-filter_complex")
+        .arg(&filtergraph)
+        .arg("-map")
+        .arg("[out]")
+        .arg("-y")
+        .arg("-hide_banner")
+        .arg("-nostdin")
+        .arg("-loglevel")
+        .arg("error")
+        .args(format_args(&params.format))
+        .arg(&temp_path)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    let output = match tokio::time::timeout(FFMPEG_TIMEOUT, command.output()).await {
+        Ok(Ok(output)) => output,
+        Ok(Err(error)) => {
+            remove_partial_output(&temp_path).await;
+            return Err(format_ffmpeg_launch_error(&resolved_program, error));
+        }
+        Err(_) => {
+            remove_partial_output(&temp_path).await;
+            return Err(format!(
+                "ffmpeg timed out after {} seconds while mixing BGM into {}",
+                FFMPEG_TIMEOUT.as_secs(),
+                vocal.display()
+            ));
+        }
+    };
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        remove_partial_output(&temp_path).await;
+        return Err(if stderr.is_empty() {
+            "ffmpeg error: unknown error".to_string()
+        } else {
+            format!("ffmpeg error: {stderr}")
+        });
+    }
+
+    replace_file(&temp_path, target_path).await
+}
+
 async fn remove_partial_output(path: &Path) {
     let _ = tokio::fs::remove_file(path).await;
 }
@@ -475,6 +572,76 @@ mod tests {
         let _ = tokio::fs::remove_file(input_path).await;
         let _ = tokio::fs::remove_file(output_path).await;
         let _ = tokio::fs::remove_file(fake_ffmpeg_path).await;
+    }
+
+    #[tokio::test]
+    async fn test_mix_bgm_audio_validates_format() {
+        let params = BgmMixParams {
+            vocal_path: "vocal.mp3".to_string(),
+            bgm_path: "bgm.mp3".to_string(),
+            output_path: "out.xyz".to_string(),
+            bgm_volume: 0.3,
+            enable_ducking: true,
+            ducking_ratio: 4.0,
+            ducking_threshold: 0.1,
+            fade_out_sec: 2.0,
+            format: "xyz".to_string(),
+        };
+
+        let err = mix_bgm_audio(&params).await.unwrap_err();
+        assert!(err.contains("Unsupported audio format"));
+    }
+
+    #[tokio::test]
+    async fn test_mix_bgm_audio_missing_files() {
+        let params = BgmMixParams {
+            vocal_path: "non_existent_vocal.mp3".to_string(),
+            bgm_path: "non_existent_bgm.mp3".to_string(),
+            output_path: "out.mp3".to_string(),
+            bgm_volume: 0.3,
+            enable_ducking: true,
+            ducking_ratio: 4.0,
+            ducking_threshold: 0.1,
+            fade_out_sec: 2.0,
+            format: "mp3".to_string(),
+        };
+
+        let err = mix_bgm_audio(&params).await.unwrap_err();
+        assert!(err.contains("Vocal audio file not found"));
+    }
+
+    #[tokio::test]
+    async fn test_mix_bgm_audio_with_ducking_success() {
+        let _guard = TEST_MUTEX.lock().await;
+        env::remove_var(FFMPEG_ENV_VAR);
+        let vocal_path = unique_temp_path("wav");
+        let bgm_path = unique_temp_path("wav");
+        let output_path = unique_temp_path("wav");
+
+        write_silent_wav(&vocal_path, 24_000, 0.4);
+        write_silent_wav(&bgm_path, 24_000, 0.4);
+
+        let params = BgmMixParams {
+            vocal_path: vocal_path.to_string_lossy().into_owned(),
+            bgm_path: bgm_path.to_string_lossy().into_owned(),
+            output_path: output_path.to_string_lossy().into_owned(),
+            bgm_volume: 0.3,
+            enable_ducking: true,
+            ducking_ratio: 4.0,
+            ducking_threshold: 0.1,
+            fade_out_sec: 1.0,
+            format: "wav".to_string(),
+        };
+
+        let result = mix_bgm_audio(&params).await;
+        assert!(result.is_ok(), "{result:?}");
+
+        let output_bytes = tokio::fs::read(&output_path).await.unwrap();
+        assert!(output_bytes.starts_with(b"RIFF"));
+
+        let _ = tokio::fs::remove_file(vocal_path).await;
+        let _ = tokio::fs::remove_file(bgm_path).await;
+        let _ = tokio::fs::remove_file(output_path).await;
     }
 
     async fn backup_bundled_ffmpeg() -> Option<PathBuf> {

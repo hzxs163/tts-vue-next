@@ -8,11 +8,14 @@ import { DEFAULT_CAST_PRESETS } from "../constants/dialoguePresets";
 import { useDialogueStore } from "../stores/dialogue";
 import { useVoicesStore } from "../stores/voices";
 import { useSettingsStore } from "../stores/settings";
+import { useBgmStore } from "../stores/bgm";
 import { saveAudioBytes } from "../utils/saveAudio";
+import BgmConfigCard from "../components/common/BgmConfigCard.vue";
 
 const dialogueStore = useDialogueStore();
 const voicesStore = useVoicesStore();
 const settingsStore = useSettingsStore();
+const bgmStore = useBgmStore();
 const message = useMessage();
 
 // Script import dialog
@@ -185,7 +188,24 @@ async function exportAudioFile() {
       return;
     }
 
-    const { cleanupError } = await saveAudioBytes(dialogueStore.audioBytes, filePath, ext);
+    const bgmOptions = bgmStore.isConfigured
+      ? {
+          enabled: bgmStore.enabled,
+          bgmPath: bgmStore.bgmPath,
+          bgmVolume: bgmStore.bgmVolume,
+          enableDucking: bgmStore.enableDucking,
+          duckingRatio: bgmStore.duckingRatio,
+          duckingThreshold: bgmStore.duckingThreshold,
+          fadeOutSec: bgmStore.fadeOutSec,
+        }
+      : undefined;
+
+    const { cleanupError } = await saveAudioBytes(
+      dialogueStore.audioBytes,
+      filePath,
+      ext,
+      bgmOptions,
+    );
     if (cleanupError) {
       throw new Error(cleanupError);
     }
@@ -421,6 +441,8 @@ async function exportSubtitlesFile() {
             </v-card>
           </div>
         </v-card>
+
+        <BgmConfigCard class="mt-4" />
       </v-col>
 
       <!-- Script Workspace (Right/Main) -->
