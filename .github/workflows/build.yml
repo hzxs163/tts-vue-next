@@ -64,6 +64,13 @@ jobs:
         run: cargo test --lib
         working-directory: src-tauri
 
+      - name: Verify the desktop app can be built
+        # Catches problems that no unit test can see: a Tauri CLI / crate
+        # version mismatch, a sidecar that is missing from the bundle, or
+        # frontend code that compiles but breaks the binary. `--no-bundle`
+        # skips the installer step so the check stays fast.
+        run: pnpm tauri build --no-bundle
+
   cross-platform-tests:
     strategy:
       fail-fast: false
@@ -138,7 +145,7 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: latest
+          version: 10.6.3
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -169,7 +176,11 @@ jobs:
             libgtk-3-dev
 
       - name: Install frontend dependencies
-        run: pnpm install
+        # The frozen lockfile is deliberate: the Tauri CLI requires the npm
+        # packages and the Rust crates to share the same major.minor, and
+        # only the committed lockfile reflects what developers actually get.
+        # Resolving fresh versions here would silently hide that drift.
+        run: pnpm install --frozen-lockfile
 
       - name: Build Tauri app (Windows NSIS only)
         if: matrix.platform == 'windows-latest'
