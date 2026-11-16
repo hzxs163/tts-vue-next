@@ -273,6 +273,11 @@ export const useDialogueStore = defineStore("dialogue", {
       saveLinesToStorage(this.lines);
     },
 
+    /** Sets the pause that newly added lines start with. */
+    setDefaultPause(ms: number) {
+      this.defaultPauseMs = Math.max(0, Math.min(5000, Math.round(ms)));
+    },
+
     /**
      * Replaces the script with the parsed lines.
      *

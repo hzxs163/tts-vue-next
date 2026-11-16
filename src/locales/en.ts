@@ -265,8 +265,7 @@ export default {
     hero: {
       overline: "Radio Drama & Audiobook Studio",
       title: "Multi-Role Studio",
-      description:
-        "Cast voice assignments, visual script dialogue editing, and seamless multi-speaker radio drama synthesis.",
+      description: "Assign a voice to every character and synthesize the whole drama in one go.",
     },
     cast: {
       title: "Voice Cast",
@@ -310,7 +309,8 @@ export default {
       addLine: "Add Line",
       clearScript: "Clear Script",
       quickAppend: "Quick append:",
-      defaultPause: "Default pause: {ms}ms",
+      defaultPause: "Default pause",
+      linePlaceholder: "Type the line…",
       milliseconds: "{ms} ms",
       insertAfter: "Insert Below",
       deleteLine: "Delete",
@@ -347,6 +347,7 @@ export default {
     selectMusic: "Choose Audio File",
     changeMusic: "Change File",
     noMusicSelected: "No background music selected",
+    notEnabled: "BGM: disabled",
     volume: "BGM Volume",
     enableDucking: "Enable Audio Ducking",
     duckingDesc: "Automatically attenuates BGM during speech and restores smoothly during pauses",

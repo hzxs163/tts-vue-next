@@ -34,6 +34,15 @@ const passthroughStub = defineComponent({
   template: "<div><slot /></div>",
 });
 
+/**
+ * The menu stub has to render the activator slot as well, otherwise every
+ * control that opens a dropdown (the speaker switcher, the pause chip, the
+ * default pause chip) is missing from the rendered output.
+ */
+const menuStub = defineComponent({
+  template: "<div><slot name='activator' /><slot /></div>",
+});
+
 const buttonStub = defineComponent({
   inheritAttrs: false,
   props: ["disabled"],
@@ -77,7 +86,7 @@ describe("DialogueStudioView", () => {
           VIcon: passthroughStub,
           VBtn: buttonStub,
           VChip: passthroughStub,
-          VMenu: passthroughStub,
+          VMenu: menuStub,
           VList: passthroughStub,
           VListItem: passthroughStub,
           VDialog: passthroughStub,
@@ -111,6 +120,38 @@ describe("DialogueStudioView", () => {
     // Default roles should be rendered
     expect(wrapper.text()).toContain(dialogueStore.roles[0].name);
     expect(wrapper.text()).toContain(dialogueStore.roles[1].name);
+  });
+
+  it("lays every script line out as a single compact row", async () => {
+    const wrapper = await mountView();
+    const dialogueStore = useDialogueStore();
+
+    const cards = wrapper.findAll(".dialogue-line-card");
+    expect(cards.length).toBe(dialogueStore.lines.length);
+
+    // Index, speaker, text, pause and actions share one row. The previous
+    // layout stacked the controls above the text, which made every line
+    // roughly three times taller than the sentence it contained.
+    for (const card of cards) {
+      const rows = card.findAll(".dialogue-line-row");
+      expect(rows).toHaveLength(1);
+      expect(rows[0].find(".dialogue-line-text").exists()).toBe(true);
+      expect(rows[0].find(".dialogue-line-pause").exists()).toBe(true);
+      expect(rows[0].find(".dialogue-line-actions").exists()).toBe(true);
+    }
+  });
+
+  it("lets the default pause be changed from the script toolbar", async () => {
+    const wrapper = await mountView();
+    const dialogueStore = useDialogueStore();
+
+    expect(dialogueStore.defaultPauseMs).toBe(300);
+
+    dialogueStore.setDefaultPause(800);
+    await wrapper.vm.$nextTick();
+
+    expect(dialogueStore.defaultPauseMs).toBe(800);
+    expect(wrapper.text()).toContain("800 ms");
   });
 
   it("triggers synthesis when clicking synthesize button", async () => {

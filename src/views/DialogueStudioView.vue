@@ -293,13 +293,19 @@ async function exportSubtitlesFile(format: "srt" | "vtt" = "srt") {
   <v-container fluid class="dialogue-page pa-3">
     <!-- Compact Header Toolbar -->
     <v-card variant="outlined" class="hero-card mb-3" rounded="xl">
-      <div class="d-flex flex-wrap align-center justify-space-between ga-3 px-4 py-2-5">
-        <div class="d-flex align-center ga-3">
+      <!--
+        The title row and the action row are separate blocks on purpose. In a
+        single flex row the action group had to compete with the title for
+        the horizontal space, which left the primary action orphaned on a
+        line of its own in the English layout.
+      -->
+      <div class="d-flex align-center justify-space-between ga-3 px-4 pt-2-5">
+        <div class="d-flex align-center ga-3 min-w-0">
           <v-avatar color="primary" variant="tonal" size="38">
             <v-icon size="22">mdi-account-voice</v-icon>
           </v-avatar>
-          <div>
-            <div class="d-flex align-center ga-2">
+          <div class="min-w-0">
+            <div class="d-flex align-center ga-2 flex-wrap">
               <span class="text-subtitle-1 font-weight-bold">{{ $t("dialogue.hero.title") }}</span>
               <v-chip size="x-small" color="primary" variant="tonal" class="font-weight-medium">
                 {{
@@ -310,65 +316,16 @@ async function exportSubtitlesFile(format: "srt" | "vtt" = "srt") {
                 }}
               </v-chip>
             </div>
-            <div class="text-caption text-medium-emphasis">
+            <div class="hero-description text-caption text-medium-emphasis">
               {{ $t("dialogue.hero.description") }}
             </div>
           </div>
         </div>
 
-        <div class="d-flex flex-wrap align-center ga-2">
-          <!-- Cast Presets Menu -->
-          <v-menu>
-            <template #activator="{ props }">
-              <v-btn
-                v-bind="props"
-                variant="outlined"
-                prepend-icon="mdi-palette-swatch-outline"
-                size="small"
-              >
-                {{ $t("dialogue.cast.presets") }}
-              </v-btn>
-            </template>
-            <v-list density="compact">
-              <v-list-item
-                v-for="p in presetOptions"
-                :key="p.value"
-                :title="p.title"
-                :subtitle="p.subtitle"
-                @click="dialogueStore.applyPreset(p.value)"
-              />
-            </v-list>
-          </v-menu>
-
-          <v-btn
-            variant="tonal"
-            color="primary"
-            prepend-icon="mdi-script-text-outline"
-            size="small"
-            @click="showImportDialog = true"
-          >
-            {{ $t("dialogue.script.importScript") }}
-          </v-btn>
-
-          <v-btn
-            variant="outlined"
-            size="small"
-            :disabled="dialogueStore.lines.length === 0"
-            @click="dialogueStore.clearLines()"
-          >
-            {{ $t("dialogue.script.clearScript") }}
-          </v-btn>
-
-          <v-btn
-            variant="outlined"
-            size="small"
-            prepend-icon="mdi-file-document-outline"
-            :disabled="dialogueStore.lines.length === 0"
-            @click="exportScriptFile"
-          >
-            {{ $t("dialogue.actions.exportScript") }}
-          </v-btn>
-
+        <!-- The primary action sits next to the title so it stays the
+             most prominent element even when the secondary actions need a
+             second row. -->
+        <div class="flex-shrink-0">
           <v-btn
             v-if="!dialogueStore.synthesizing"
             color="primary"
@@ -391,6 +348,60 @@ async function exportSubtitlesFile(format: "srt" | "vtt" = "srt") {
             {{ $t("dialogue.actions.stop") }}
           </v-btn>
         </div>
+      </div>
+
+      <div class="d-flex flex-wrap align-center ga-2 px-4 pb-2-5 mt-1">
+        <!-- Cast Presets Menu -->
+        <v-menu>
+          <template #activator="{ props }">
+            <v-btn
+              v-bind="props"
+              variant="outlined"
+              prepend-icon="mdi-palette-swatch-outline"
+              size="small"
+            >
+              {{ $t("dialogue.cast.presets") }}
+            </v-btn>
+          </template>
+          <v-list density="compact">
+            <v-list-item
+              v-for="p in presetOptions"
+              :key="p.value"
+              :title="p.title"
+              :subtitle="p.subtitle"
+              @click="dialogueStore.applyPreset(p.value)"
+            />
+          </v-list>
+        </v-menu>
+
+        <v-btn
+          variant="tonal"
+          color="primary"
+          prepend-icon="mdi-script-text-outline"
+          size="small"
+          @click="showImportDialog = true"
+        >
+          {{ $t("dialogue.script.importScript") }}
+        </v-btn>
+
+        <v-btn
+          variant="outlined"
+          size="small"
+          :disabled="dialogueStore.lines.length === 0"
+          @click="dialogueStore.clearLines()"
+        >
+          {{ $t("dialogue.script.clearScript") }}
+        </v-btn>
+
+        <v-btn
+          variant="outlined"
+          size="small"
+          prepend-icon="mdi-file-document-outline"
+          :disabled="dialogueStore.lines.length === 0"
+          @click="exportScriptFile"
+        >
+          {{ $t("dialogue.actions.exportScript") }}
+        </v-btn>
       </div>
 
       <!-- Synthesis Progress Alert -->
@@ -456,7 +467,7 @@ async function exportSubtitlesFile(format: "srt" | "vtt" = "srt") {
             <v-icon size="14">mdi-music-note</v-icon>
             BGM: {{ bgmStore.bgmName }}
           </span>
-          <span v-else class="text-disabled">BGM: 未启用</span>
+          <span v-else class="text-disabled">{{ $t("bgm.notEnabled") }}</span>
         </div>
       </div>
 
@@ -500,97 +511,131 @@ async function exportSubtitlesFile(format: "srt" | "vtt" = "srt") {
 
           <div class="d-flex align-center ga-2">
             <span class="text-caption text-medium-emphasis">{{
-              $t("dialogue.script.defaultPause", { ms: dialogueStore.defaultPauseMs })
+              $t("dialogue.script.defaultPause")
             }}</span>
+            <v-menu>
+              <template #activator="{ props }">
+                <v-chip
+                  v-bind="props"
+                  size="small"
+                  variant="outlined"
+                  class="cursor-pointer font-weight-bold"
+                >
+                  {{ dialogueStore.defaultPauseMs }} ms
+                  <v-icon end size="12">mdi-chevron-down</v-icon>
+                </v-chip>
+              </template>
+              <v-list density="compact">
+                <v-list-item
+                  v-for="ms in pauseOptions"
+                  :key="ms"
+                  :title="$t('dialogue.script.milliseconds', { ms })"
+                  @click="dialogueStore.setDefaultPause(ms)"
+                />
+              </v-list>
+            </v-menu>
           </div>
         </div>
 
         <!-- Script Lines List -->
-        <div class="script-lines-scroll pa-4">
+        <div class="script-lines-scroll pa-3">
           <template v-if="dialogueStore.lines.length > 0">
             <div
               v-for="(line, index) in dialogueStore.lines"
               :key="line.id"
-              class="dialogue-line-card mb-3 pa-3 rounded-lg"
+              class="dialogue-line-card mb-2 px-3 py-2 rounded-lg"
               :style="{
                 borderLeft: `4px solid var(--v-theme-${getRoleById(line.roleId).color})`,
               }"
             >
-              <div class="d-flex align-center justify-space-between mb-2">
-                <div class="d-flex align-center ga-2">
-                  <span class="text-caption text-medium-emphasis font-weight-bold">
-                    #{{ index + 1 }}
-                  </span>
+              <!--
+                Everything of a line sits on one row: index, speaker, text,
+                pause and the actions. Stacking them vertically made every
+                line about three times taller than the text it holds and left
+                a wide empty gap between the speaker and the buttons.
+              -->
+              <div class="dialogue-line-row">
+                <span class="dialogue-line-index">#{{ index + 1 }}</span>
 
-                  <!-- Quick Role Switcher Menu -->
-                  <v-menu>
-                    <template #activator="{ props }">
-                      <v-btn
-                        v-bind="props"
-                        size="small"
-                        variant="tonal"
+                <!-- Quick Role Switcher Menu -->
+                <v-menu>
+                  <template #activator="{ props }">
+                    <v-btn
+                      v-bind="props"
+                      size="small"
+                      variant="tonal"
+                      :color="getRoleById(line.roleId).color"
+                      class="dialogue-line-role px-2 font-weight-bold"
+                      append-icon="mdi-chevron-down"
+                    >
+                      <v-avatar
+                        start
+                        size="18"
                         :color="getRoleById(line.roleId).color"
-                        class="px-2 font-weight-bold"
-                        append-icon="mdi-chevron-down"
+                        class="text-white text-caption mr-1"
                       >
-                        <v-avatar
-                          start
-                          size="18"
-                          :color="getRoleById(line.roleId).color"
-                          class="text-white text-caption mr-1"
-                        >
-                          {{ getRoleById(line.roleId).name.slice(0, 1) }}
+                        {{ getRoleById(line.roleId).name.slice(0, 1) }}
+                      </v-avatar>
+                      {{ getRoleById(line.roleId).name }}
+                    </v-btn>
+                  </template>
+                  <v-list density="compact">
+                    <v-list-item
+                      v-for="r in dialogueStore.roles"
+                      :key="r.id"
+                      :title="r.name"
+                      :subtitle="r.voice.split('-').pop()"
+                      @click="dialogueStore.updateLine(line.id, { roleId: r.id })"
+                    >
+                      <template #prepend>
+                        <v-avatar size="20" :color="r.color" class="mr-2 text-white text-caption">
+                          {{ r.name.slice(0, 1) }}
                         </v-avatar>
-                        {{ getRoleById(line.roleId).name }}
-                      </v-btn>
-                    </template>
-                    <v-list density="compact">
-                      <v-list-item
-                        v-for="r in dialogueStore.roles"
-                        :key="r.id"
-                        :title="r.name"
-                        :subtitle="r.voice.split('-').pop()"
-                        @click="dialogueStore.updateLine(line.id, { roleId: r.id })"
-                      >
-                        <template #prepend>
-                          <v-avatar size="20" :color="r.color" class="mr-2 text-white text-caption">
-                            {{ r.name.slice(0, 1) }}
-                          </v-avatar>
-                        </template>
-                      </v-list-item>
-                    </v-list>
-                  </v-menu>
+                      </template>
+                    </v-list-item>
+                  </v-list>
+                </v-menu>
 
-                  <!-- Pause Selector Menu -->
-                  <v-menu>
-                    <template #activator="{ props }">
-                      <v-chip
-                        v-bind="props"
-                        size="x-small"
-                        variant="outlined"
-                        class="text-caption cursor-pointer"
-                      >
-                        {{
-                          $t("dialogue.script.pauseAfter", {
-                            ms: line.pauseAfterMs || dialogueStore.defaultPauseMs,
-                          })
-                        }}
-                        <v-icon end size="12">mdi-clock-outline</v-icon>
-                      </v-chip>
-                    </template>
-                    <v-list density="compact">
-                      <v-list-item
-                        v-for="ms in pauseOptions"
-                        :key="ms"
-                        :title="$t('dialogue.script.milliseconds', { ms })"
-                        @click="dialogueStore.updateLine(line.id, { pauseAfterMs: ms })"
-                      />
-                    </v-list>
-                  </v-menu>
-                </div>
+                <v-textarea
+                  v-model="line.text"
+                  :placeholder="$t('dialogue.script.linePlaceholder')"
+                  rows="1"
+                  auto-grow
+                  density="compact"
+                  variant="outlined"
+                  hide-details
+                  class="dialogue-line-text"
+                />
+
+                <!-- Pause Selector Menu -->
+                <v-menu>
+                  <template #activator="{ props }">
+                    <v-chip
+                      v-bind="props"
+                      size="small"
+                      variant="outlined"
+                      class="dialogue-line-pause cursor-pointer"
+                    >
+                      {{
+                        $t("dialogue.script.pauseAfter", {
+                          ms: line.pauseAfterMs || dialogueStore.defaultPauseMs,
+                        })
+                      }}
+                      <v-icon end size="12">mdi-clock-outline</v-icon>
+                    </v-chip>
+                  </template>
+                  <v-list density="compact">
+                    <v-list-item
+                      v-for="ms in pauseOptions"
+                      :key="ms"
+                      :title="$t('dialogue.script.milliseconds', { ms })"
+                      @click="dialogueStore.updateLine(line.id, { pauseAfterMs: ms })"
+                    />
+                  </v-list>
+                </v-menu>
 
                 <!-- Actions -->
-                <div class="d-flex align-center ga-1">
+                <div class="dialogue-line-actions">
                   <v-btn
                     icon
                     size="x-small"
@@ -619,16 +664,6 @@ async function exportSubtitlesFile(format: "srt" | "vtt" = "srt") {
                   />
                 </div>
               </div>
-
-              <v-textarea
-                v-model="line.text"
-                rows="2"
-                auto-grow
-                density="compact"
-                variant="outlined"
-                hide-details
-                class="dialogue-textarea"
-              />
             </div>
           </template>
 
@@ -853,22 +888,29 @@ async function exportSubtitlesFile(format: "srt" | "vtt" = "srt") {
       <!-- ================= TAB 3: 背景音乐与混音 ================= -->
       <div v-show="activeTab === 'bgm'" class="studio-tab-pane pa-4">
         <div class="bgm-tab-container pb-6">
-          <BgmConfigCard :elevation="0" class="mb-4" />
+          <!--
+            The BGM card is built for a narrow column. Stretched across the
+            full tab width its four strength buttons each grew to ~190px and
+            the tips card was pushed out of the viewport, so the card is
+            capped and the tips sit next to it.
+          -->
+          <div class="bgm-tab-grid">
+            <BgmConfigCard :elevation="0" />
 
-          <!-- Helpful mixing tips card -->
-          <v-card variant="outlined" rounded="lg" class="pa-4 tips-card">
-            <div class="d-flex align-center ga-2 mb-2">
-              <v-icon color="primary" size="20">mdi-lightbulb-on-outline</v-icon>
-              <span class="text-subtitle-2 font-weight-bold">{{
-                $t("dialogue.bgm.tipsTitle")
-              }}</span>
-            </div>
-            <ul class="text-caption text-medium-emphasis pl-4" style="line-height: 1.8">
-              <li>{{ $t("dialogue.bgm.tipsFormat") }}</li>
-              <li>{{ $t("dialogue.bgm.tipsDucking") }}</li>
-              <li>{{ $t("dialogue.bgm.tipsExport") }}</li>
-            </ul>
-          </v-card>
+            <v-card variant="outlined" rounded="lg" class="pa-4 tips-card">
+              <div class="d-flex align-center ga-2 mb-2">
+                <v-icon color="primary" size="20">mdi-lightbulb-on-outline</v-icon>
+                <span class="text-subtitle-2 font-weight-bold">{{
+                  $t("dialogue.bgm.tipsTitle")
+                }}</span>
+              </div>
+              <ul class="text-caption text-medium-emphasis pl-4" style="line-height: 1.8">
+                <li>{{ $t("dialogue.bgm.tipsFormat") }}</li>
+                <li>{{ $t("dialogue.bgm.tipsDucking") }}</li>
+                <li>{{ $t("dialogue.bgm.tipsExport") }}</li>
+              </ul>
+            </v-card>
+          </div>
         </div>
       </div>
     </v-card>
@@ -1092,6 +1134,15 @@ async function exportSubtitlesFile(format: "srt" | "vtt" = "srt") {
   width: 100%;
 }
 
+/*
+ * The description is capped so that the title block stays narrow enough for
+ * the primary action to sit next to it. Without the cap the long English
+ * text pushed the action onto its own row.
+ */
+.hero-description {
+  max-width: 460px;
+}
+
 .dialogue-line-card {
   background: rgba(var(--v-theme-surface), 0.9);
   border: 1px solid rgba(var(--v-border-color), 0.4);
@@ -1101,6 +1152,73 @@ async function exportSubtitlesFile(format: "srt" | "vtt" = "srt") {
 .dialogue-line-card:hover {
   background: rgba(var(--v-theme-surface), 1);
   box-shadow: 0 4px 12px rgba(var(--v-theme-on-surface), 0.05);
+}
+
+/*
+ * One row per line: index, speaker, text, pause, actions. The text field
+ * takes the space that used to sit empty between the speaker and the
+ * buttons, and a line now needs about a third of the vertical room.
+ */
+.dialogue-line-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.dialogue-line-index {
+  flex: 0 0 auto;
+  min-width: 26px;
+  text-align: right;
+  font-size: 12px;
+  font-weight: 700;
+  color: rgba(var(--v-theme-on-surface), 0.55);
+}
+
+.dialogue-line-role {
+  flex: 0 0 auto;
+  max-width: 150px;
+}
+
+.dialogue-line-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* The textarea is the only element that may wrap onto more rows. */
+.dialogue-line-text :deep(textarea) {
+  overflow-y: hidden;
+}
+
+.dialogue-line-pause {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.dialogue-line-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  /* Out of the way until the line is hovered. */
+  opacity: 0.5;
+  transition: opacity 0.15s ease;
+}
+
+.dialogue-line-card:hover .dialogue-line-actions,
+.dialogue-line-card:focus-within .dialogue-line-actions {
+  opacity: 1;
+}
+
+@media (max-width: 860px) {
+  .dialogue-line-row {
+    flex-wrap: wrap;
+  }
+
+  .dialogue-line-text {
+    order: 3;
+    flex-basis: 100%;
+  }
 }
 
 .role-grid-card {
@@ -1128,9 +1246,26 @@ async function exportSubtitlesFile(format: "srt" | "vtt" = "srt") {
 }
 
 .bgm-tab-container {
-  max-width: 820px;
+  max-width: 980px;
   margin: 0 auto;
   width: 100%;
+}
+
+/*
+ * The BGM card keeps a comfortable reading width and the mixing tips sit
+ * beside it, instead of both being stretched across the whole tab.
+ */
+.bgm-tab-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 520px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .bgm-tab-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .cursor-pointer {
