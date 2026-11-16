@@ -71,7 +71,9 @@ impl Communicate {
         Ok(audio)
     }
 
-    pub async fn stream_audio_with_subtitles(&self) -> Result<(Vec<u8>, SubtitleTrack), EdgeTTSError> {
+    pub async fn stream_audio_with_subtitles(
+        &self,
+    ) -> Result<(Vec<u8>, SubtitleTrack), EdgeTTSError> {
         self.stream_chunk_sequence_with_timeout(config::get().wss_url.as_str(), RECEIVE_TIMEOUT)
             .await
     }

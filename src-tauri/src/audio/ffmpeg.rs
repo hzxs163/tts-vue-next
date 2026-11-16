@@ -143,9 +143,8 @@ pub async fn mix_bgm_audio(params: &BgmMixParams) -> Result<(), String> {
             // ffmpeg 4.1 runtime only understands sample counts. Padding to a
             // total length never truncates a vocal that turns out to be
             // slightly longer than the probe reported.
-            let total_samples = ((vocal_duration + fade_out_sec as f64)
-                * MIX_SAMPLE_RATE as f64)
-                .round() as u64;
+            let total_samples =
+                ((vocal_duration + fade_out_sec as f64) * MIX_SAMPLE_RATE as f64).round() as u64;
             let fade_start = format!("{vocal_duration:.3}");
             let fade_duration = format!("{fade_out_sec:.3}");
             format!(
@@ -784,10 +783,12 @@ mod tests {
         };
 
         assert!(mix_bgm_audio(&plain_params).await.is_ok());
-        let plain_duration =
-            probe_audio_duration_seconds(&resolved_program.program, &plain_output.to_string_lossy())
-                .await
-                .expect("expected a duration for the plain mix");
+        let plain_duration = probe_audio_duration_seconds(
+            &resolved_program.program,
+            &plain_output.to_string_lossy(),
+        )
+        .await
+        .expect("expected a duration for the plain mix");
 
         let faded_params = BgmMixParams {
             output_path: faded_output.to_string_lossy().into_owned(),
@@ -796,10 +797,12 @@ mod tests {
         };
 
         assert!(mix_bgm_audio(&faded_params).await.is_ok());
-        let faded_duration =
-            probe_audio_duration_seconds(&resolved_program.program, &faded_output.to_string_lossy())
-                .await
-                .expect("expected a duration for the faded mix");
+        let faded_duration = probe_audio_duration_seconds(
+            &resolved_program.program,
+            &faded_output.to_string_lossy(),
+        )
+        .await
+        .expect("expected a duration for the faded mix");
 
         // The fade-out must actually append a fading music tail. Before the
         // fix `fade_out_sec` was mapped to `amix`'s `dropout_transition`,

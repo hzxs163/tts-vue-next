@@ -113,7 +113,10 @@ pub async fn tts_convert(
 #[command]
 pub async fn tts_get_subtitles(task_id: String) -> Result<Option<SubtitleTrack>, CommandError> {
     let mut cache = SUBTITLE_CACHE.lock().await;
-    let Some(position) = cache.iter().position(|(cached_id, _)| cached_id == &task_id) else {
+    let Some(position) = cache
+        .iter()
+        .position(|(cached_id, _)| cached_id == &task_id)
+    else {
         return Ok(None);
     };
     let (_, track) = cache.remove(position).unwrap();
@@ -447,7 +450,9 @@ mod tests {
         assert_eq!(fetched.cues.len(), 1);
 
         // The entry is consumed on retrieval.
-        let second = tts_get_subtitles("task-subtitles".to_string()).await.unwrap();
+        let second = tts_get_subtitles("task-subtitles".to_string())
+            .await
+            .unwrap();
         assert!(second.is_none());
     }
 

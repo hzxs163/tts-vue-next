@@ -1,5 +1,5 @@
-use std::sync::LazyLock;
 use crate::edge_tts::types::TTSConfig;
+use std::sync::LazyLock;
 
 pub static BREAK_TAG_REGEX: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(
@@ -17,9 +17,15 @@ pub static BREAK_TAG_REGEX: LazyLock<regex::Regex> = LazyLock::new(|| {
 /// the boundary is sharp - always prefer writing the unit explicitly.
 pub fn parse_break_duration_ms(captures: &regex::Captures) -> Option<u64> {
     let (val_str, unit_str) = if let Some(val) = captures.get(1) {
-        (val.as_str(), captures.get(2).map(|m| m.as_str()).unwrap_or(""))
+        (
+            val.as_str(),
+            captures.get(2).map(|m| m.as_str()).unwrap_or(""),
+        )
     } else if let Some(val) = captures.get(3) {
-        (val.as_str(), captures.get(4).map(|m| m.as_str()).unwrap_or(""))
+        (
+            val.as_str(),
+            captures.get(4).map(|m| m.as_str()).unwrap_or(""),
+        )
     } else {
         return None;
     };

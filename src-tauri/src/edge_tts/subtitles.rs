@@ -169,7 +169,10 @@ pub fn group_cues_into_sentences(cues: &[SubtitleCue]) -> Vec<SubtitleCue> {
     // downstream consumers can rely on either representation.
     for cue in result.iter_mut() {
         cue.offset = cue.start_ms.saturating_mul(10_000);
-        cue.duration = cue.end_ms.saturating_sub(cue.start_ms).saturating_mul(10_000);
+        cue.duration = cue
+            .end_ms
+            .saturating_sub(cue.start_ms)
+            .saturating_mul(10_000);
     }
 
     result
