@@ -89,6 +89,12 @@ describe("DialogueStudioView", () => {
           VRadioGroup: passthroughStub,
           VRadio: passthroughStub,
           VProgressLinear: passthroughStub,
+          VTabs: passthroughStub,
+          VTab: passthroughStub,
+          VWindow: passthroughStub,
+          VWindowItem: passthroughStub,
+          VBadge: passthroughStub,
+          BgmConfigCard: passthroughStub,
         },
       },
     });
@@ -117,5 +123,16 @@ describe("DialogueStudioView", () => {
 
     await synthButton!.trigger("click");
     expect(invokeMock).toHaveBeenCalled();
+  });
+
+  it("switches tabs between script, cast, and bgm", async () => {
+    const wrapper = await mountView();
+
+    expect(wrapper.text()).toContain("剧本台本工作台");
+    expect(wrapper.text()).toContain("快速追加台词：");
+
+    // Check tabs are rendered
+    expect(wrapper.text()).toContain("角色声优阵容");
+    expect(wrapper.text()).toContain("背景音乐与人声避让 (BGM)");
   });
 });
