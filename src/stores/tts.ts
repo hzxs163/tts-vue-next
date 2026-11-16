@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { TtsParams, TtsProgressEvent } from "../types";
 import { useVoicesStore } from "./voices";
 import { useSettingsStore } from "./settings";
-import { classifyTtsError, type TtsErrorKind } from "../utils/ttsErrors";
+import { classifyTtsError, toErrorMessage, type TtsErrorKind } from "../utils/ttsErrors";
 
 const EDGE_TTS_OUTPUT_FORMAT = "audio-24khz-48kbitrate-mono-mp3";
 
@@ -24,10 +24,6 @@ interface TtsState {
 
 function toSignedString(value: number, suffix: string): string {
   return `${value >= 0 ? "+" : ""}${value}${suffix}`;
-}
-
-function toErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 function revokeAudioUrl(audioUrl: string | null): void {
@@ -86,10 +82,7 @@ export const useTtsStore = defineStore("tts", {
       }
 
       this.$patch({
-        progress: Math.min(
-          99,
-          Math.round((event.completed / event.total) * 100),
-        ),
+        progress: Math.min(99, Math.round((event.completed / event.total) * 100)),
       });
     },
 
@@ -111,6 +104,7 @@ export const useTtsStore = defineStore("tts", {
         format: EDGE_TTS_OUTPUT_FORMAT,
         task_id: taskId,
         max_retries: settingsStore.maxRetries,
+        chunk_concurrency: settingsStore.chunkConcurrency,
       };
 
       revokeAudioUrl(this.audioUrl);
@@ -146,21 +140,24 @@ export const useTtsStore = defineStore("tts", {
           return;
         }
 
+        const errorKind = classifyTtsError(error);
+        // A user-requested stop is not a failure: reset silently instead of
+        // flashing an error toast for an expected action.
+        const cancelled = errorKind === "cancelled";
+
         this.$patch({
-          error: toErrorMessage(error),
-          errorKind: classifyTtsError(error),
+          error: cancelled ? null : toErrorMessage(error),
+          errorKind: cancelled ? null : errorKind,
           audioBytes: null,
           audioUrl: null,
         });
       } finally {
-        if (this.requestVersion !== requestVersion) {
-          return;
+        if (this.requestVersion === requestVersion) {
+          this.$patch({
+            converting: false,
+            currentTaskId: null,
+          });
         }
-
-        this.$patch({
-          converting: false,
-          currentTaskId: null,
-        });
       }
     },
 
@@ -177,6 +174,13 @@ export const useTtsStore = defineStore("tts", {
     },
 
     clear() {
+      const taskId = this.currentTaskId;
+      if (taskId) {
+        // Clearing the UI must also stop the backend synthesis; otherwise the
+        // conversion keeps consuming service quota with nobody listening.
+        void invoke("tts_stop", { taskId }).catch(() => undefined);
+      }
+
       revokeAudioUrl(this.audioUrl);
       this.$patch({
         text: "",

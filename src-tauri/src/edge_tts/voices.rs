@@ -1,8 +1,25 @@
+use std::sync::LazyLock;
+use std::time::Duration;
+
 use crate::edge_tts::config;
 use crate::edge_tts::constants::{CHROMIUM_MAJOR_VERSION, TRUSTED_CLIENT_TOKEN};
 use crate::edge_tts::drm::{adjust_clock_skew, generate_muid, generate_sec_ms_gec};
 use crate::edge_tts::errors::EdgeTTSError;
 use crate::edge_tts::types::Voice;
+
+/// Shared client so the voice list reuses one connection pool, and so a stalled
+/// endpoint can never leave the settings UI loading forever.
+static HTTP_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
+    reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(10))
+        .timeout(Duration::from_secs(20))
+        .build()
+        .expect("failed to build the Edge TTS HTTP client")
+});
+
+fn http_client() -> &'static reqwest::Client {
+    &HTTP_CLIENT
+}
 
 pub async fn list_voices() -> Result<Vec<Voice>, EdgeTTSError> {
     let settings = config::get();
@@ -31,41 +48,33 @@ pub async fn list_voices() -> Result<Vec<Voice>, EdgeTTSError> {
 
 #[cfg(test)]
 async fn list_voices_from_url(base_url: &str) -> Result<Vec<Voice>, EdgeTTSError> {
-    list_voices_from_url_with_version(
-        base_url,
-        crate::edge_tts::constants::SEC_MS_GEC_VERSION,
-    )
-    .await
+    list_voices_from_url_with_version(base_url, crate::edge_tts::constants::SEC_MS_GEC_VERSION)
+        .await
 }
 
 async fn list_voices_from_url_with_version(
     base_url: &str,
     version: &str,
 ) -> Result<Vec<Voice>, EdgeTTSError> {
-    let client = reqwest::Client::new();
-
-    match fetch_voices(&client, base_url, version).await {
+    match fetch_voices(base_url, version).await {
         Ok(voices) => Ok(voices),
-        Err(EdgeTTSError::HttpError(403)) => fetch_voices(&client, base_url, version).await,
+        Err(EdgeTTSError::HttpError(403)) => fetch_voices(base_url, version).await,
         Err(error) => Err(error),
     }
 }
 
-async fn fetch_voices(
-    client: &reqwest::Client,
-    base_url: &str,
-    version: &str,
-) -> Result<Vec<Voice>, EdgeTTSError> {
+async fn fetch_voices(base_url: &str, version: &str) -> Result<Vec<Voice>, EdgeTTSError> {
     let separator = if base_url.contains('?') { '&' } else { '?' };
     let url = format!(
         "{base_url}{separator}trustedclienttoken={TRUSTED_CLIENT_TOKEN}&Sec-MS-GEC={}&Sec-MS-GEC-Version={version}",
         generate_sec_ms_gec()
     );
 
-    let response = client
+    // Do not advertise compression: this build does not enable reqwest's
+    // decompression features, so a compressed body would fail to parse.
+    let response = http_client()
         .get(url)
         .header("User-Agent", config::get().user_agent.as_str())
-        .header("Accept-Encoding", "gzip, deflate, br, zstd")
         .header("Accept-Language", "en-US,en;q=0.9")
         .header("Authority", "speech.platform.bing.com")
         .header(
@@ -120,15 +129,21 @@ mod tests {
         assert_eq!(voices.len(), 1);
         assert_eq!(voices[0].short_name, "en-US-AvaNeural");
         assert_eq!(voices[0].voice_tag.content_categories, Vec::<String>::new());
-        assert_eq!(voices[0].voice_tag.voice_personalities, Vec::<String>::new());
+        assert_eq!(
+            voices[0].voice_tag.voice_personalities,
+            Vec::<String>::new()
+        );
         assert_eq!(voices[0].friendly_name, "");
         assert_eq!(voices[0].status, "");
     }
 
     #[tokio::test]
     async fn test_list_voices_retries_once_after_403() {
-        let forbidden =
-            json_response(403, "forbidden", Some("Date: Wed, 15 Apr 2026 12:00:00 GMT\r\n"));
+        let forbidden = json_response(
+            403,
+            "forbidden",
+            Some("Date: Wed, 15 Apr 2026 12:00:00 GMT\r\n"),
+        );
         let success = json_response(
             200,
             r#"[{"Name":"Microsoft Server Speech Text to Speech Voice (en-US, AvaNeural)","ShortName":"en-US-AvaNeural","Gender":"Female","Locale":"en-US"}]"#,
@@ -140,6 +155,20 @@ mod tests {
 
         assert_eq!(voices.len(), 1);
         assert_eq!(requests.lock().unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_list_voices_does_not_request_compressed_responses() {
+        let response = json_response(200, "[]", None);
+        let (base_url, requests) = spawn_server(vec![response]).await;
+
+        list_voices_from_url(&base_url).await.unwrap();
+
+        let request = requests.lock().unwrap()[0].to_ascii_lowercase();
+        assert!(
+            !request.contains("accept-encoding"),
+            "voice list must not negotiate compression without a decoder: {request}"
+        );
     }
 
     #[tokio::test]

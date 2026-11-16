@@ -3,14 +3,21 @@ mod commands;
 mod edge_tts;
 mod utils;
 
+use tauri::Manager;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let _ = env_logger::Builder::from_env(
-        env_logger::Env::default().default_filter_or("info"),
-    )
-    .try_init();
-
     tauri::Builder::default()
+        // Must be registered first so a second launch focuses this instance
+        // instead of spawning a duplicate app with its own probe/voice refresh.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
+        .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
@@ -25,8 +32,13 @@ pub fn run() {
             commands::file::show_in_folder,
             commands::file::write_binary_file,
             commands::file::remove_file,
+            commands::file::resolve_output_path,
             commands::audio::convert_audio_format,
         ])
+        .setup(|app| {
+            crate::utils::log::init(app.handle());
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

@@ -38,9 +38,7 @@ watch(
       error: file.error ?? null,
     })),
   (files, previousFiles) => {
-    const previousErrors = new Map(
-      (previousFiles ?? []).map((file) => [file.id, file.error]),
-    );
+    const previousErrors = new Map((previousFiles ?? []).map((file) => [file.id, file.error]));
 
     files.forEach((file) => {
       if (!file.error || previousErrors.get(file.id) === file.error) {
@@ -71,12 +69,7 @@ function isPointerInsideFileList(x: number, y: number): boolean {
   const cssX = x / scale;
   const cssY = y / scale;
 
-  return (
-    cssX >= bounds.left &&
-    cssX <= bounds.right &&
-    cssY >= bounds.top &&
-    cssY <= bounds.bottom
-  );
+  return cssX >= bounds.left && cssX <= bounds.right && cssY >= bounds.top && cssY <= bounds.bottom;
 }
 
 function addDroppedFiles(paths: string[]) {
@@ -93,9 +86,7 @@ function setUnsupportedFilesError(paths: string[]) {
   fileError.value =
     unsupportedPaths.length > 0
       ? t("batch.upload.unsupportedFileTypes", {
-          files: unsupportedPaths
-            .map((path) => path.split(/[\\/]/).pop() || path)
-            .join(", "),
+          files: unsupportedPaths.map((path) => path.split(/[\\/]/).pop() || path).join(", "),
         })
       : null;
 
@@ -114,10 +105,7 @@ onMounted(async () => {
     switch (payload.type) {
       case "enter":
       case "over":
-        isDragOver.value = isPointerInsideFileList(
-          payload.position.x,
-          payload.position.y,
-        );
+        isDragOver.value = isPointerInsideFileList(payload.position.x, payload.position.y);
         break;
       case "drop":
         isDragOver.value = false;
@@ -151,6 +139,8 @@ function statusColor(status: string): string {
       return "success";
     case "error":
       return "error";
+    case "skipped":
+      return "warning";
     case "processing":
       return "primary";
     default:
@@ -164,6 +154,8 @@ function statusLabel(status: string): string {
       return t("batch.list.status.completed");
     case "error":
       return t("batch.list.status.failed");
+    case "skipped":
+      return t("batch.list.status.skipped");
     case "processing":
       return t("batch.list.status.processing");
     default:
@@ -190,14 +182,13 @@ async function showInFolder(path: string) {
         'file-list--error': hasError,
         'file-list--disabled': isDisabled,
       }"
-      :aria-disabled="isDisabled">
+      :aria-disabled="isDisabled"
+    >
       <template #prepend>
         <v-avatar color="primary" variant="tonal" size="36">
           <v-icon>mdi-tune-variant</v-icon>
         </v-avatar>
-        <v-card-title class="text-h6 ml-2">{{
-          $t("batch.list.title")
-        }}</v-card-title>
+        <v-card-title class="text-h6 ml-2">{{ $t("batch.list.title") }}</v-card-title>
       </template>
 
       <!-- <div class="file-list__header pa-4 pb-2">
@@ -230,10 +221,7 @@ async function showInFolder(path: string) {
                   </div>
                 </td>
                 <td>
-                  <v-chip
-                    :color="statusColor(file.status)"
-                    size="small"
-                    variant="tonal">
+                  <v-chip :color="statusColor(file.status)" size="small" variant="tonal">
                     {{ statusLabel(file.status) }}
                   </v-chip>
                 </td>
@@ -242,7 +230,8 @@ async function showInFolder(path: string) {
                     :model-value="file.progress"
                     :color="statusColor(file.status)"
                     height="8"
-                    rounded />
+                    rounded
+                  />
                 </td>
                 <td>
                   <div class="d-flex align-center ga-1">
@@ -251,25 +240,26 @@ async function showInFolder(path: string) {
                       icon
                       size="x-small"
                       variant="text"
-                      @click="showInFolder(file.outputPath)">
+                      @click="showInFolder(file.outputPath)"
+                    >
                       <v-icon size="small">mdi-folder-open-outline</v-icon>
                     </v-btn>
                     <v-btn
-                      v-if="file.status === 'error'"
+                      v-if="file.status === 'error' || file.status === 'skipped'"
                       icon
                       size="x-small"
                       variant="text"
-                      @click="batchStore.retryFile(file.id)">
+                      @click="batchStore.retryFile(file.id)"
+                    >
                       <v-icon size="small">mdi-refresh</v-icon>
                     </v-btn>
                     <v-btn
                       icon
                       size="x-small"
                       variant="text"
-                      :disabled="
-                        batchStore.converting && file.status === 'processing'
-                      "
-                      @click="batchStore.removeFile(file.id)">
+                      :disabled="batchStore.converting && file.status === 'processing'"
+                      @click="batchStore.removeFile(file.id)"
+                    >
                       <v-icon size="small">mdi-close</v-icon>
                     </v-btn>
                   </div>
@@ -314,11 +304,7 @@ async function showInFolder(path: string) {
 .file-list--drag-over {
   border-color: rgb(var(--v-theme-primary));
   background:
-    radial-gradient(
-      circle at top,
-      rgba(var(--v-theme-primary), 0.1),
-      transparent 42%
-    ),
+    radial-gradient(circle at top, rgba(var(--v-theme-primary), 0.1), transparent 42%),
     rgba(var(--v-theme-surface), 0.96);
   box-shadow: 0 0 0 1px rgba(var(--v-theme-primary), 0.16) inset;
 }

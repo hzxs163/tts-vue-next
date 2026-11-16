@@ -10,9 +10,7 @@ function getLocalStorage(): Storage | null {
   return window.localStorage;
 }
 
-function parseAppLanguage(
-  value: string | null | undefined,
-): AppLanguage | null {
+function parseAppLanguage(value: string | null | undefined): AppLanguage | null {
   const normalized = value?.trim().toLowerCase();
 
   if (normalized === "en" || normalized === "en-us") {
@@ -26,15 +24,11 @@ function parseAppLanguage(
   return null;
 }
 
-export function normalizeAppLanguage(
-  value: string | null | undefined,
-): AppLanguage {
+export function normalizeAppLanguage(value: string | null | undefined): AppLanguage {
   return parseAppLanguage(value) ?? "zh-CN";
 }
 
-export function normalizeAppLocale(
-  value: string | null | undefined,
-): AppLocale {
+export function normalizeAppLocale(value: string | null | undefined): AppLocale {
   return normalizeAppLanguage(value) === "en-US" ? "en" : "zh";
 }
 

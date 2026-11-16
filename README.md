@@ -30,6 +30,7 @@
   - 最大重试次数（1-10 次）
   - 文件并发数（1-5）
   - 分段并发数（1-5）
+  - 同名文件处理（覆盖 / 跳过 / 自动重命名）
 
 ### 4. 界面特性
 - 现代化的玻璃拟态（Glassmorphism）设计
@@ -37,6 +38,7 @@
 - 自定义窗口标题栏
 - 响应式布局
 - 国际化支持（i18n）
+- 单实例运行，窗口大小与位置自动记忆
 
 ## 技术栈
 
@@ -64,12 +66,12 @@
 
 ### 环境要求
 
-- **Node.js** >= 20.0.0（Vite 6 / Vitest 4 要求）
-- **pnpm** >= 9.0.0（锁文件为 `lockfileVersion: 9.0`）
-- **Rust** >= 1.70.0
+- **Node.js** >= 20.19.0（Vite 6 / Vitest 4 要求）
+- **pnpm** >= 10.0.0（锁文件为 `lockfileVersion: 9.0`）
+- **Rust** >= 1.80.0（使用了 `std::sync::LazyLock`）
 - **系统依赖**
   - Windows: 无需额外依赖
-  - Linux: `libwebkit2gtk-4.0-dev`, `build-essential`, `curl`, `file`, `x11-utils`, `libxdo-dev`, `libssl-dev`, `libayatana-appindicator3-dev`, `librsvg2-dev`
+  - Linux: `libwebkit2gtk-4.1-dev`, `build-essential`, `curl`, `file`, `x11-utils`, `libxdo-dev`, `libssl-dev`, `libayatana-appindicator3-dev`, `librsvg2-dev`
   - macOS: Xcode Command Line Tools
 
 ### 安装依赖
@@ -108,6 +110,8 @@ pnpm tauri:build
 ```
 
 构建产物位于 `src-tauri/target/release/bundle/` 目录。
+
+> FFmpeg sidecar 只按宿主平台同步：`tauri:build:mac` 默认构建 Apple Silicon，Intel 请用 `tauri:build:mac:intel`。通用的 universal 包需要 lipo 合并后的 `ffmpeg-universal-apple-darwin`，仓库不会自动生成；如需 universal 构建，请手动把该二进制放入 `src-tauri/binaries/`。
 
 ### 运行测试
 
@@ -149,6 +153,7 @@ python scripts/generate-mdi-subset.py
 
 - 应用启动时通过 `check_tts_service` 对**合成端点**做一次握手探测。发音人列表返回 200 并不代表合成可用，因此两者分开检测。
 - 探测或转换失败时，界面按 `auth` / `network` / `timeout` / `cancelled` / `unknown` 分类提示，Rust 侧通过 `env_logger` 输出日志（可用 `RUST_LOG=debug` 调整级别）。
+- 日志同时写入应用日志目录下的 `tts-vue-next.log`（超过 5 MiB 时轮转为 `tts-vue-next.log.1`）；Windows 通常位于 `%LOCALAPPDATA%\com.jigu1688.tts-vue-next\logs`。
 - 发音人列表拉取失败时自动回退到 localStorage 中的缓存，界面显示「使用缓存」提示。
 
 ## 项目结构

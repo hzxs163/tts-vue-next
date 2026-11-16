@@ -98,7 +98,8 @@ const fileConcurrency = computed({
           :step="1"
           hide-details
           thumb-label
-          color="primary" />
+          color="primary"
+        />
       </div>
 
       <div class="slider-group">
@@ -113,7 +114,8 @@ const fileConcurrency = computed({
           :step="1"
           hide-details
           thumb-label
-          color="primary" />
+          color="primary"
+        />
       </div>
 
       <div class="slider-group">
@@ -128,7 +130,8 @@ const fileConcurrency = computed({
           :step="1"
           hide-details
           thumb-label
-          color="primary" />
+          color="primary"
+        />
       </div>
 
       <v-divider class="my-4" />
@@ -138,14 +141,16 @@ const fileConcurrency = computed({
         :items="formatOptions"
         :label="$t('tts.options.outputFormat')"
         prepend-inner-icon="mdi-file-music-outline"
-        class="mb-3" />
+        class="mb-3"
+      />
 
       <v-select
         v-model="fileConcurrency"
         :items="concurrencyOptions"
         :label="$t('settings.fields.fileConcurrency')"
         prepend-inner-icon="mdi-tune"
-        hide-details />
+        hide-details
+      />
     </v-card-text>
 
     <v-card-actions class="px-4 pb-4 pt-0 d-flex flex-column ga-3">
@@ -154,15 +159,28 @@ const fileConcurrency = computed({
         color="primary"
         :loading="batchStore.converting"
         :disabled="batchStore.files.length === 0"
-        @click="batchStore.convertAll()">
+        @click="batchStore.convertAll()"
+      >
         {{ $t("batch.actions.startAll") }}
+      </v-btn>
+
+      <v-btn
+        v-if="batchStore.converting"
+        block
+        variant="outlined"
+        color="error"
+        prepend-icon="mdi-stop"
+        @click="batchStore.stopAll()"
+      >
+        {{ $t("batch.actions.stopAll") }}
       </v-btn>
 
       <v-btn
         block
         variant="outlined"
         :disabled="batchStore.converting || batchStore.files.length === 0"
-        @click="batchStore.clearFiles()">
+        @click="batchStore.clearFiles()"
+      >
         {{ $t("batch.actions.clear") }}
       </v-btn>
     </v-card-actions>
@@ -174,11 +192,7 @@ const fileConcurrency = computed({
   height: 100%;
   border-color: rgba(var(--v-border-color), var(--v-border-opacity));
   background:
-    radial-gradient(
-      circle at top left,
-      rgba(var(--v-theme-primary), 0.1),
-      transparent 28%
-    ),
+    radial-gradient(circle at top left, rgba(var(--v-theme-primary), 0.1), transparent 28%),
     rgba(var(--v-theme-surface), 0.78);
   backdrop-filter: blur(18px);
   box-shadow: 0 18px 60px rgba(var(--v-theme-on-surface), 0.08);

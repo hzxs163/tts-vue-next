@@ -15,9 +15,7 @@ const settingsStore = useSettingsStore();
 let media: MediaQueryList | null = null;
 
 function applyTheme() {
-  theme.change(
-    resolveThemeName(settingsStore.themeMode, media?.matches ?? false),
-  );
+  theme.change(resolveThemeName(settingsStore.themeMode, media?.matches ?? false));
 }
 
 function applyLanguage() {

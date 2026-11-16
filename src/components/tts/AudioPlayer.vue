@@ -4,7 +4,8 @@ import { useI18n } from "vue-i18n";
 import { useMessage } from "vuetify-message-vue3";
 import { useSettingsStore } from "../../stores/settings";
 import { useTtsStore } from "../../stores/tts";
-import { bytesToBase64 } from "../../utils/bytes";
+import { saveAudioBytes } from "../../utils/saveAudio";
+import { toErrorMessage } from "../../utils/ttsErrors";
 
 const ttsStore = useTtsStore();
 const settingsStore = useSettingsStore();
@@ -17,10 +18,6 @@ const currentTime = ref(0);
 const duration = ref(0);
 const playerVolume = ref(100);
 
-function toErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 function formatTime(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) {
     return "00:00";
@@ -28,9 +25,7 @@ function formatTime(seconds: number): string {
 
   const minutes = Math.floor(seconds / 60);
   const remainingSeconds = Math.floor(seconds % 60);
-  return `${minutes.toString().padStart(2, "0")}:${remainingSeconds
-    .toString()
-    .padStart(2, "0")}`;
+  return `${minutes.toString().padStart(2, "0")}:${remainingSeconds.toString().padStart(2, "0")}`;
 }
 
 async function togglePlay() {
@@ -48,9 +43,8 @@ async function togglePlay() {
   try {
     await audioRef.value.play();
   } catch (error) {
-    const errorMessage = toErrorMessage(error);
-    ttsStore.$patch({ error: errorMessage });
-    message.error(errorMessage);
+    // The global alert layer reports ttsStore.error; do not double-toast here.
+    ttsStore.$patch({ error: toErrorMessage(error) });
   }
 }
 
@@ -65,9 +59,7 @@ function onLoadedMetadata() {
     return;
   }
 
-  duration.value = Number.isFinite(audioRef.value.duration)
-    ? audioRef.value.duration
-    : 0;
+  duration.value = Number.isFinite(audioRef.value.duration) ? audioRef.value.duration : 0;
   audioRef.value.volume = playerVolume.value / 100;
 }
 
@@ -94,7 +86,8 @@ function updateVolume(value: number) {
 }
 
 async function saveAudio() {
-  if (!ttsStore.audioBytes) {
+  const audioBytes = ttsStore.audioBytes;
+  if (!audioBytes) {
     return;
   }
 
@@ -102,7 +95,6 @@ async function saveAudio() {
 
   try {
     const { save } = await import("@tauri-apps/plugin-dialog");
-    const { invoke } = await import("@tauri-apps/api/core");
     const ext = settingsStore.outputFormat;
     const filePath = await save({
       defaultPath: t("tts.audioPlayer.defaultFileName", { ext }),
@@ -113,54 +105,15 @@ async function saveAudio() {
       return;
     }
 
-    const audioData = bytesToBase64(ttsStore.audioBytes ?? new Uint8Array());
-
-    if (ext === "mp3") {
-      await invoke("write_binary_file", {
-        path: filePath,
-        data: audioData,
-      });
-      return;
+    const { cleanupError } = await saveAudioBytes(audioBytes, filePath, ext);
+    if (cleanupError) {
+      throw new Error(cleanupError);
     }
 
-    const tempPath = `${filePath}.tmp.mp3`;
-    let saveError: unknown = null;
-    let shouldRemoveTempFile = false;
-
-    try {
-      await invoke("write_binary_file", {
-        path: tempPath,
-        data: audioData,
-      });
-      shouldRemoveTempFile = true;
-      await invoke("convert_audio_format", {
-        inputPath: tempPath,
-        outputPath: filePath,
-        format: ext,
-      });
-    } catch (error) {
-      saveError = error;
-    } finally {
-      if (shouldRemoveTempFile) {
-        try {
-          await invoke("remove_file", {
-            path: tempPath,
-          });
-        } catch (cleanupError) {
-          if (!saveError) {
-            saveError = cleanupError;
-          }
-        }
-      }
-    }
-
-    if (saveError) {
-      throw saveError;
-    }
+    message.success(t("tts.audioPlayer.saved", { path: filePath }));
   } catch (error) {
-    const errorMessage = toErrorMessage(error);
-    ttsStore.$patch({ error: errorMessage });
-    message.error(errorMessage);
+    // GlobalAlerts is the single error surface; avoid a duplicate toast.
+    ttsStore.$patch({ error: toErrorMessage(error) });
   }
 }
 
@@ -191,9 +144,7 @@ watch(
       try {
         await audioRef.value.play();
       } catch (error) {
-        const errorMessage = toErrorMessage(error);
-        ttsStore.$patch({ error: errorMessage });
-        message.error(errorMessage);
+        ttsStore.$patch({ error: toErrorMessage(error) });
       }
     }
   },
@@ -215,7 +166,8 @@ onUnmounted(() => {
       @loadedmetadata="onLoadedMetadata"
       @play="isPlaying = true"
       @pause="isPlaying = false"
-      @ended="onEnded" />
+      @ended="onEnded"
+    />
 
     <div class="audio-player__inner">
       <div class="audio-player__label text-caption font-weight-medium">
@@ -227,7 +179,8 @@ onUnmounted(() => {
         variant="text"
         :aria-label="$t('tts.audioPlayer.togglePlayback')"
         :disabled="!ttsStore.audioUrl"
-        @click="togglePlay">
+        @click="togglePlay"
+      >
         <v-icon>{{ isPlaying ? "mdi-pause" : "mdi-play" }}</v-icon>
       </v-btn>
 
@@ -243,7 +196,8 @@ onUnmounted(() => {
         density="compact"
         color="primary"
         class="audio-player__progress"
-        @update:model-value="seek" />
+        @update:model-value="seek"
+      />
 
       <div class="audio-player__volume d-flex align-center ga-2">
         <v-icon size="small">mdi-volume-high</v-icon>
@@ -254,7 +208,8 @@ onUnmounted(() => {
           hide-details
           density="compact"
           style="width: 92px"
-          @update:model-value="updateVolume" />
+          @update:model-value="updateVolume"
+        />
       </div>
 
       <v-btn
@@ -262,7 +217,8 @@ onUnmounted(() => {
         variant="text"
         :aria-label="$t('tts.audioPlayer.saveGeneratedAudio')"
         :disabled="!ttsStore.audioBytes"
-        @click="saveAudio">
+        @click="saveAudio"
+      >
         <v-icon>mdi-content-save</v-icon>
       </v-btn>
     </div>

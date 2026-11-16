@@ -51,9 +51,7 @@ async function openRepository() {
 }
 
 function toggleTheme() {
-  settingsStore.updateThemeMode(
-    theme.global.current.value.dark ? "light" : "dark",
-  );
+  settingsStore.updateThemeMode(theme.global.current.value.dark ? "light" : "dark");
 }
 
 onMounted(async () => {
@@ -83,11 +81,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <v-app-bar
-    height="36"
-    flat
-    class="title-bar glass-panel"
-    data-tauri-drag-region>
+  <v-app-bar height="36" flat class="title-bar glass-panel" data-tauri-drag-region>
     <div class="drag-region">
       <div class="app-title-wrap">
         <span class="app-title">{{ $t("common.appName") }}</span>
@@ -99,7 +93,8 @@ onBeforeUnmount(() => {
       size="small"
       variant="text"
       :aria-label="$t('titleBar.openRepository')"
-      @click="openRepository">
+      @click="openRepository"
+    >
       <v-icon size="18">mdi-github</v-icon>
     </v-btn>
     <v-btn
@@ -107,13 +102,10 @@ onBeforeUnmount(() => {
       size="small"
       variant="text"
       :aria-label="$t('titleBar.toggleTheme')"
-      @click="toggleTheme">
+      @click="toggleTheme"
+    >
       <v-icon size="18">
-        {{
-          theme.global.current.value.dark
-            ? "mdi-weather-sunny"
-            : "mdi-weather-night"
-        }}
+        {{ theme.global.current.value.dark ? "mdi-weather-sunny" : "mdi-weather-night" }}
       </v-icon>
     </v-btn>
     <v-btn
@@ -121,7 +113,8 @@ onBeforeUnmount(() => {
       size="small"
       variant="text"
       :aria-label="$t('titleBar.minimize')"
-      @click="runWindowAction(() => appWindow.minimize())">
+      @click="runWindowAction(() => appWindow.minimize())"
+    >
       <v-icon size="18">mdi-minus</v-icon>
     </v-btn>
     <v-btn
@@ -129,7 +122,8 @@ onBeforeUnmount(() => {
       size="small"
       variant="text"
       :aria-label="$t('titleBar.toggleMaximize')"
-      @click="toggleMaximize">
+      @click="toggleMaximize"
+    >
       <v-icon size="18">
         {{ isMaximized ? "mdi-window-restore" : "mdi-window-maximize" }}
       </v-icon>
@@ -140,7 +134,8 @@ onBeforeUnmount(() => {
       variant="text"
       class="close-btn"
       :aria-label="$t('titleBar.close')"
-      @click="runWindowAction(() => appWindow.close())">
+      @click="runWindowAction(() => appWindow.close())"
+    >
       <v-icon size="18">mdi-close</v-icon>
     </v-btn>
     <span v-if="windowActionError" role="alert" class="window-action-error">

@@ -9,7 +9,7 @@ import { useBatchStore } from "../../stores/batch";
 import type { BatchFile } from "../../types";
 
 const cardStub = defineComponent({
-  template: '<section><slot /></section>',
+  template: "<section><slot /></section>",
 });
 
 const cardItemStub = defineComponent({
@@ -17,11 +17,11 @@ const cardItemStub = defineComponent({
 });
 
 const cardTextStub = defineComponent({
-  template: '<div><slot /></div>',
+  template: "<div><slot /></div>",
 });
 
 const cardActionsStub = defineComponent({
-  template: '<div><slot /></div>',
+  template: "<div><slot /></div>",
 });
 
 const buttonStub = defineComponent({
@@ -47,7 +47,7 @@ const selectStub = defineComponent({
       default: "",
     },
   },
-  template: '<label>{{ label }}</label>',
+  template: "<label>{{ label }}</label>",
 });
 
 const sliderStub = defineComponent({
@@ -55,19 +55,19 @@ const sliderStub = defineComponent({
 });
 
 const dividerStub = defineComponent({
-  template: '<hr />',
+  template: "<hr />",
 });
 
 const avatarStub = defineComponent({
-  template: '<div><slot /></div>',
+  template: "<div><slot /></div>",
 });
 
 const iconStub = defineComponent({
-  template: '<span><slot /></span>',
+  template: "<span><slot /></span>",
 });
 
 const voiceSelectorStub = defineComponent({
-  template: '<div>Language Voice</div>',
+  template: "<div>Language Voice</div>",
 });
 
 const sampleFile: BatchFile = {
@@ -85,10 +85,7 @@ describe("BatchOptions", () => {
     i18n.global.locale.value = "en";
   });
 
-  async function mountBatchOptions(overrides?: {
-    files?: BatchFile[];
-    converting?: boolean;
-  }) {
+  async function mountBatchOptions(overrides?: { files?: BatchFile[]; converting?: boolean }) {
     const batchStore = useBatchStore();
 
     batchStore.$patch({
@@ -141,16 +138,36 @@ describe("BatchOptions", () => {
     expect(clearButton.attributes("disabled")).toBeDefined();
   });
 
-  test("shows loading on the primary action and disables the secondary action while converting", async () => {
+  test("shows loading on the primary action and exposes stop while converting", async () => {
     const wrapper = await mountBatchOptions({
       files: [sampleFile],
       converting: true,
     });
-    const [startButton, clearButton] = wrapper.findAll("button");
+    const [startButton, stopButton, clearButton] = wrapper.findAll("button");
 
     expect(startButton.attributes("disabled")).toBeUndefined();
     expect(startButton.attributes("data-loading")).toBe("true");
+    expect(stopButton.text()).toContain("Stop All");
     expect(clearButton.attributes("disabled")).toBeDefined();
+  });
+
+  test("dispatches stop through the store while converting", async () => {
+    const batchStore = useBatchStore();
+    batchStore.$patch({ files: [sampleFile], converting: true });
+    const stopAllSpy = vi.spyOn(batchStore, "stopAll");
+
+    const wrapper = await mountBatchOptions({
+      files: [sampleFile],
+      converting: true,
+    });
+    const stopButton = wrapper
+      .findAll("button")
+      .find((button) => button.text().includes("Stop All"));
+
+    expect(stopButton).toBeDefined();
+    await stopButton!.trigger("click");
+
+    expect(stopAllSpy).toHaveBeenCalledTimes(1);
   });
 
   test("dispatches batch actions through the store", async () => {

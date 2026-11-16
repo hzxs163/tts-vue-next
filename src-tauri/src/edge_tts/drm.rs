@@ -16,31 +16,27 @@ use crate::edge_tts::constants::{
 static CLOCK_SKEW_MS: AtomicI64 = AtomicI64::new(0);
 
 const SHA256_INITIAL: [u32; 8] = [
-    0x6A09E667, 0xBB67AE85, 0x3C6EF372, 0xA54FF53A, 0x510E527F, 0x9B05688C, 0x1F83D9AB,
-    0x5BE0CD19,
+    0x6A09E667, 0xBB67AE85, 0x3C6EF372, 0xA54FF53A, 0x510E527F, 0x9B05688C, 0x1F83D9AB, 0x5BE0CD19,
 ];
 
 const SHA256_STATE: [u32; 8] = [
-    0xFD9FBEA2, 0x91243CE7, 0xBE499094, 0xCD2E1E0A, 0x6C006F49, 0x04BD35AB, 0xFEB0A7E4,
-    0x03EFFBD2,
+    0xFD9FBEA2, 0x91243CE7, 0xBE499094, 0xCD2E1E0A, 0x6C006F49, 0x04BD35AB, 0xFEB0A7E4, 0x03EFFBD2,
 ];
 
 const SHA256_SCHEDULE: [u32; 14] = [
-    0xEB24BF9E, 0x1558691F, 0xA0C09EE2, 0x0CFA32BA, 0xA622EE8C, 0xD1DD9491, 0xC0DD25A0,
-    0xF9E70AB6, 0xF0C31573, 0x7058CE4E, 0x7188E606, 0x00E5AB33, 0xD258B060, 0x72766564,
+    0xEB24BF9E, 0x1558691F, 0xA0C09EE2, 0x0CFA32BA, 0xA622EE8C, 0xD1DD9491, 0xC0DD25A0, 0xF9E70AB6,
+    0xF0C31573, 0x7058CE4E, 0x7188E606, 0x00E5AB33, 0xD258B060, 0x72766564,
 ];
 
 const SHA256_ROUND_CONSTANTS: [u32; 64] = [
-    0x428A2F98, 0x71374491, 0xB5C0FBCF, 0xE9B5DBA5, 0x3956C25B, 0x59F111F1, 0x923F82A4,
-    0xAB1C5ED5, 0xD807AA98, 0x12835B01, 0x243185BE, 0x550C7DC3, 0x72BE5D74, 0x80DEB1FE,
-    0x9BDC06A7, 0xC19BF174, 0xE49B69C1, 0xEFBE4786, 0x0FC19DC6, 0x240CA1CC, 0x2DE92C6F,
-    0x4A7484AA, 0x5CB0A9DC, 0x76F988DA, 0x983E5152, 0xA831C66D, 0xB00327C8, 0xBF597FC7,
-    0xC6E00BF3, 0xD5A79147, 0x06CA6351, 0x14292967, 0x27B70A85, 0x2E1B2138, 0x4D2C6DFC,
-    0x53380D13, 0x650A7354, 0x766A0ABB, 0x81C2C92E, 0x92722C85, 0xA2BFE8A1, 0xA81A664B,
-    0xC24B8B70, 0xC76C51A3, 0xD192E819, 0xD6990624, 0xF40E3585, 0x106AA070, 0x19A4C116,
-    0x1E376C08, 0x2748774C, 0x34B0BCB5, 0x391C0CB3, 0x4ED8AA4A, 0x5B9CCA4F, 0x682E6FF3,
-    0x748F82EE, 0x78A5636F, 0x84C87814, 0x8CC70208, 0x90BEFFFA, 0xA4506CEB, 0xBEF9A3F7,
-    0xC67178F2,
+    0x428A2F98, 0x71374491, 0xB5C0FBCF, 0xE9B5DBA5, 0x3956C25B, 0x59F111F1, 0x923F82A4, 0xAB1C5ED5,
+    0xD807AA98, 0x12835B01, 0x243185BE, 0x550C7DC3, 0x72BE5D74, 0x80DEB1FE, 0x9BDC06A7, 0xC19BF174,
+    0xE49B69C1, 0xEFBE4786, 0x0FC19DC6, 0x240CA1CC, 0x2DE92C6F, 0x4A7484AA, 0x5CB0A9DC, 0x76F988DA,
+    0x983E5152, 0xA831C66D, 0xB00327C8, 0xBF597FC7, 0xC6E00BF3, 0xD5A79147, 0x06CA6351, 0x14292967,
+    0x27B70A85, 0x2E1B2138, 0x4D2C6DFC, 0x53380D13, 0x650A7354, 0x766A0ABB, 0x81C2C92E, 0x92722C85,
+    0xA2BFE8A1, 0xA81A664B, 0xC24B8B70, 0xC76C51A3, 0xD192E819, 0xD6990624, 0xF40E3585, 0x106AA070,
+    0x19A4C116, 0x1E376C08, 0x2748774C, 0x34B0BCB5, 0x391C0CB3, 0x4ED8AA4A, 0x5B9CCA4F, 0x682E6FF3,
+    0x748F82EE, 0x78A5636F, 0x84C87814, 0x8CC70208, 0x90BEFFFA, 0xA4506CEB, 0xBEF9A3F7, 0xC67178F2,
 ];
 
 const SHA256_ADJUSTMENT: u32 = 0xC9DC06A7;
@@ -164,9 +160,7 @@ fn sha256_rounds(state: [u32; 8], words: &[u32], first_round: usize) -> [u32; 8]
 fn sha256_init(data: &[u8]) -> [u32; 8] {
     let mut words = vec![0_u32; 14];
     words.push(u32::from_be_bytes([0, data[0], data[1], data[2]]));
-    words.push(u32::from_be_bytes([
-        data[3], data[4], data[5], data[6],
-    ]));
+    words.push(u32::from_be_bytes([data[3], data[4], data[5], data[6]]));
 
     for index in 16..30 {
         let mut value = SHA256_SCHEDULE[index - 16] as u64;
@@ -255,7 +249,7 @@ fn words_le4_even(data: &[u8]) -> Vec<u32> {
         .chunks(4)
         .map(|bytes| u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
         .collect();
-    if words.len() % 2 != 0 {
+    if !words.len().is_multiple_of(2) {
         words.push(0);
     }
     words
@@ -273,9 +267,7 @@ fn cs64_digest(data: &[u8], digest: &[u8; 32]) -> (u32, u32) {
     let mut terms: Vec<u32> = CS64_COEFFICIENTS
         .iter()
         .enumerate()
-        .map(|(index, (coefficient, _))| {
-            (*coefficient as u64 * factors[index % 2] as u64) as u32
-        })
+        .map(|(index, (coefficient, _))| (*coefficient as u64 * factors[index % 2] as u64) as u32)
         .collect();
     let mut offsets: Vec<u32> = CS64_COEFFICIENTS
         .iter()
@@ -315,9 +307,7 @@ fn cs64_digest(data: &[u8], digest: &[u8; 32]) -> (u32, u32) {
 
         let t = rol16(offsets[index].wrapping_add(x));
         let q = (t as u64 * 0x76F50F34) as u32;
-        swap_acc = swap_acc.wrapping_add(
-            (rol16(q) as u64 * 0xC3EFEA97 + q as u64) as u32,
-        );
+        swap_acc = swap_acc.wrapping_add((rol16(q) as u64 * 0xC3EFEA97 + q as u64) as u32);
 
         let t = rol16(offsets[index + 1].wrapping_add(y));
         let q = (t as u64 * 0x1881CE3C) as u32;
@@ -399,7 +389,11 @@ mod tests {
     #[test]
     fn test_v2_token_matches_official_vectors() {
         for (timestamp, expected) in OFFICIAL_VECTORS {
-            assert_eq!(generate_sec_ms_gec_at(timestamp), expected, "ts={timestamp}");
+            assert_eq!(
+                generate_sec_ms_gec_at(timestamp),
+                expected,
+                "ts={timestamp}"
+            );
         }
     }
 
@@ -408,10 +402,7 @@ mod tests {
         let token = generate_sec_ms_gec();
         assert_eq!(token.len(), 81);
         assert_eq!(&token[16..17], "-");
-        assert!(token
-            .chars()
-            .enumerate()
-            .all(|(_, c)| c == '-' || c.is_ascii_hexdigit()));
+        assert!(token.chars().all(|c| c == '-' || c.is_ascii_hexdigit()));
     }
 
     /// Manual probe helper: `cargo test --lib print_current_token -- --ignored --nocapture`.

@@ -9,8 +9,7 @@ pub const SEC_MS_GEC_VERSION: &str = "2-143.0.3650.75";
 
 // Documented endpoint base; the concrete URLs below are also asserted by tests.
 #[allow(dead_code)]
-pub const BASE_URL: &str =
-    "speech.platform.bing.com/consumer/speech/synthesize/readaloud";
+pub const BASE_URL: &str = "speech.platform.bing.com/consumer/speech/synthesize/readaloud";
 
 pub const WSS_URL: &str =
     "wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1";

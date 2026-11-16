@@ -34,11 +34,7 @@ pub fn split_text_by_byte_length(text: &str) -> Vec<String> {
         }
 
         let slice = &escaped[start..end];
-        let split_pos = slice
-            .rfind('\n')
-            .map(|pos| pos + 1)
-            .or_else(|| slice.rfind(' ').map(|pos| pos + 1))
-            .unwrap_or(slice.len());
+        let split_pos = find_split_position(slice);
 
         let mut actual_end = start + split_pos;
         if let Some(amp_pos) = escaped[start..actual_end].rfind('&') {
@@ -61,6 +57,40 @@ pub fn split_text_by_byte_length(text: &str) -> Vec<String> {
     }
 
     chunks
+}
+
+/// Prefer a sentence boundary near the end of the slice, then a clause break,
+/// then a word break. Falling back to the hard byte limit keeps languages that
+/// do not use spaces (and run-on sentences) working.
+///
+/// Breaks too close to the start are ignored so a punctuation mark at byte 10
+/// cannot produce a tiny chunk.
+fn find_split_position(slice: &str) -> usize {
+    const MIN_CHUNK_BYTES: usize = MAX_CHUNK_BYTES / 4;
+    const SENTENCE_ENDS: [char; 8] = ['。', '！', '？', '；', '!', '?', ';', '\n'];
+    const CLAUSE_ENDS: [char; 5] = ['，', '、', ',', '：', ':'];
+
+    let mut sentence_split = None;
+    let mut clause_split = None;
+    let mut word_split = None;
+
+    for (index, ch) in slice.char_indices() {
+        let split_at = index + ch.len_utf8();
+
+        if SENTENCE_ENDS.contains(&ch) {
+            sentence_split = Some(split_at);
+        } else if CLAUSE_ENDS.contains(&ch) {
+            clause_split = Some(split_at);
+        } else if ch.is_whitespace() {
+            word_split = Some(split_at);
+        }
+    }
+
+    sentence_split
+        .filter(|position| *position >= MIN_CHUNK_BYTES)
+        .or(clause_split.filter(|position| *position >= MIN_CHUNK_BYTES))
+        .or(word_split.filter(|position| *position >= MIN_CHUNK_BYTES))
+        .unwrap_or(slice.len())
 }
 
 #[cfg(test)]
@@ -92,18 +122,35 @@ mod tests {
         let chunks = split_text_by_byte_length(&text);
         assert!(chunks.len() > 1);
         for chunk in &chunks {
-            assert!(chunk.as_bytes().len() <= MAX_CHUNK_BYTES);
+            assert!(chunk.len() <= MAX_CHUNK_BYTES);
         }
     }
 
     #[test]
     fn test_xml_escape_in_split() {
         let text = "Hello & world < test > end";
-        let chunks = split_text_by_byte_length(&text);
+        let chunks = split_text_by_byte_length(text);
         assert_eq!(chunks.len(), 1);
         assert!(chunks[0].contains("&amp;"));
         assert!(chunks[0].contains("&lt;"));
         assert!(chunks[0].contains("&gt;"));
+    }
+
+    #[test]
+    fn test_prefers_sentence_boundaries() {
+        let first = "这".repeat(1200);
+        let second = "那".repeat(1200);
+        let text = format!("{first}。{second}。");
+
+        let chunks = split_text_by_byte_length(&text);
+
+        assert!(chunks.len() >= 2);
+        assert!(
+            chunks[0].ends_with('。'),
+            "first chunk should end a sentence"
+        );
+        assert!(chunks[0].len() <= MAX_CHUNK_BYTES);
+        assert_eq!(chunks.concat(), text, "splitting must not lose text");
     }
 
     #[test]
@@ -113,7 +160,7 @@ mod tests {
         assert!(chunks.len() > 1);
         for chunk in &chunks {
             assert!(chunk.is_char_boundary(0));
-            assert!(chunk.as_bytes().len() <= MAX_CHUNK_BYTES);
+            assert!(chunk.len() <= MAX_CHUNK_BYTES);
         }
     }
 }

@@ -48,11 +48,11 @@ const buttonStub = defineComponent({
 });
 
 const iconStub = defineComponent({
-  template: '<span><slot /></span>',
+  template: "<span><slot /></span>",
 });
 
 const chipStub = defineComponent({
-  template: '<span><slot /></span>',
+  template: "<span><slot /></span>",
 });
 
 const progressStub = defineComponent({

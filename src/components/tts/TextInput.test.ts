@@ -76,9 +76,7 @@ describe("TextInput", () => {
 
     expect(wrapper.find(".text-panel.glass-panel").exists()).toBe(true);
     expect(wrapper.find("textarea").exists()).toBe(true);
-    expect(wrapper.find('[aria-label="Clear text input"]').exists()).toBe(
-      false,
-    );
+    expect(wrapper.find('[aria-label="Clear text input"]').exists()).toBe(false);
   });
 
   test("shows clear icon after input and updates store", async () => {
@@ -98,16 +96,20 @@ describe("TextInput", () => {
     await wrapper.find('[aria-label="Clear text input"]').trigger("click");
 
     expect(store.text).toBe("");
-    expect(wrapper.find('[aria-label="Clear text input"]').exists()).toBe(
-      false,
-    );
+    expect(wrapper.find('[aria-label="Clear text input"]').exists()).toBe(false);
   });
 
   test("disables clear icon while a conversion is running", async () => {
     const { wrapper } = await mountTextInput("hello", true);
 
-    expect(
-      wrapper.find('[aria-label="Clear text input"]').attributes("disabled"),
-    ).toBeDefined();
+    expect(wrapper.find('[aria-label="Clear text input"]').attributes("disabled")).toBeDefined();
+  });
+
+  test("ignores clear clicks while a conversion is running", async () => {
+    const { wrapper, store } = await mountTextInput("hello", true);
+
+    await wrapper.find('[aria-label="Clear text input"]').trigger("click");
+
+    expect(store.text).toBe("hello");
   });
 });

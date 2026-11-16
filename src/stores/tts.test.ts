@@ -132,6 +132,7 @@ describe("useTtsStore", () => {
         format: "audio-24khz-48kbitrate-mono-mp3",
         task_id: "task-123",
         max_retries: 7,
+        chunk_concurrency: 3,
       },
     });
     expect(Array.from(store.audioBytes ?? [])).toEqual([1, 2, 3]);
@@ -146,14 +147,67 @@ describe("useTtsStore", () => {
     expect(Array.from(new Uint8Array(await blob.arrayBuffer()))).toEqual([1, 2, 3]);
   });
 
+  test("treats a cancelled conversion as a silent reset", async () => {
+    invokeMock.mockRejectedValue(new Error("Cancelled"));
+    const { useTtsStore } = await import("./tts");
+    const store = useTtsStore();
+
+    store.setText("hello");
+    await store.convert();
+
+    expect(store.error).toBeNull();
+    expect(store.errorKind).toBeNull();
+    expect(store.converting).toBe(false);
+    expect(store.audioBytes).toBeNull();
+  });
+
+  test("treats a structured cancellation as a silent reset", async () => {
+    invokeMock.mockRejectedValue({
+      code: "cancelled",
+      message: "Cancelled",
+      retryable: false,
+    });
+    const { useTtsStore } = await import("./tts");
+    const store = useTtsStore();
+
+    store.setText("hello");
+    await store.convert();
+
+    expect(store.error).toBeNull();
+    expect(store.errorKind).toBeNull();
+    expect(store.converting).toBe(false);
+  });
+
+  test("stops the backend task when clearing during conversion", async () => {
+    invokeMock.mockResolvedValue(undefined);
+    const { useTtsStore } = await import("./tts");
+    const store = useTtsStore();
+
+    store.$patch({
+      text: "hello",
+      currentTaskId: "task-123",
+      converting: true,
+    });
+
+    store.clear();
+    await flushPromises();
+
+    expect(invokeMock).toHaveBeenCalledWith("tts_stop", { taskId: "task-123" });
+    expect(store.currentTaskId).toBeNull();
+    expect(store.converting).toBe(false);
+  });
+
   test("ignores late conversion results after clear", async () => {
     let resolveInvoke: ((value: ArrayBuffer) => void) | undefined;
-    invokeMock.mockImplementation(
-      () =>
-        new Promise<ArrayBuffer>((resolve) => {
-          resolveInvoke = resolve;
-        }),
-    );
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "tts_stop") {
+        return Promise.resolve(undefined);
+      }
+
+      return new Promise<ArrayBuffer>((resolve) => {
+        resolveInvoke = resolve;
+      });
+    });
     const { useTtsStore } = await import("./tts");
     const store = useTtsStore();
 

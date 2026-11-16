@@ -8,13 +8,15 @@ import i18n from "../../plugins/i18n";
 import { useSettingsStore } from "../../stores/settings";
 import { useTtsStore } from "../../stores/tts";
 
-const { saveMock, writeFileMock, removeMock, invokeMock, messageErrorMock } = vi.hoisted(() => ({
-  saveMock: vi.fn(),
-  writeFileMock: vi.fn(),
-  removeMock: vi.fn(),
-  invokeMock: vi.fn(),
-  messageErrorMock: vi.fn(),
-}));
+const { saveMock, writeFileMock, removeMock, invokeMock, messageErrorMock, messageSuccessMock } =
+  vi.hoisted(() => ({
+    saveMock: vi.fn(),
+    writeFileMock: vi.fn(),
+    removeMock: vi.fn(),
+    invokeMock: vi.fn(),
+    messageErrorMock: vi.fn(),
+    messageSuccessMock: vi.fn(),
+  }));
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({
   save: saveMock,
@@ -32,6 +34,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 vi.mock("vuetify-message-vue3", () => ({
   useMessage: () => ({
     error: messageErrorMock,
+    success: messageSuccessMock,
   }),
 }));
 
@@ -83,6 +86,7 @@ describe("AudioPlayer", () => {
     removeMock.mockReset();
     invokeMock.mockReset();
     messageErrorMock.mockReset();
+    messageSuccessMock.mockReset();
 
     const settingsStore = useSettingsStore();
     settingsStore.$reset();
@@ -136,7 +140,26 @@ describe("AudioPlayer", () => {
 
     const ttsStore = useTtsStore();
     expect(ttsStore.error).toContain("write failed");
-    expect(messageErrorMock).toHaveBeenCalledWith(expect.stringContaining("write failed"));
+    // Errors are surfaced once by GlobalAlerts; the player must not double-toast.
+    expect(messageErrorMock).not.toHaveBeenCalled();
+    expect(messageSuccessMock).not.toHaveBeenCalled();
+  });
+
+  test("reports a saved file exactly once", async () => {
+    const settingsStore = useSettingsStore();
+    settingsStore.updateOutputFormat("mp3");
+    saveMock.mockResolvedValue("/tmp/output.mp3");
+    invokeMock.mockResolvedValue(undefined);
+
+    const wrapper = await mountAudioPlayer();
+
+    const buttons = wrapper.findAll("button");
+    await buttons[1].trigger("click");
+    await flushPromises();
+
+    expect(messageSuccessMock).toHaveBeenCalledTimes(1);
+    expect(messageSuccessMock).toHaveBeenCalledWith(expect.stringContaining("/tmp/output.mp3"));
+    expect(messageErrorMock).not.toHaveBeenCalled();
   });
 
   test("preserves the conversion error when temp file cleanup also fails", async () => {

@@ -35,7 +35,6 @@ const buttonStub = defineComponent({
     '<button v-bind="$attrs" :disabled="disabled" @click="$emit(\'click\')"><slot /></button>',
 });
 
-
 describe("FileUpload", () => {
   let pinia: ReturnType<typeof createPinia>;
 

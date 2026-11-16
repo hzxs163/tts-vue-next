@@ -28,9 +28,7 @@ function setUnsupportedFilesError(paths: string[]) {
   fileError.value =
     unsupportedPaths.length > 0
       ? t("batch.upload.unsupportedFileTypes", {
-          files: unsupportedPaths
-            .map((path) => path.split(/[\\/]/).pop() || path)
-            .join(", "),
+          files: unsupportedPaths.map((path) => path.split(/[\\/]/).pop() || path).join(", "),
         })
       : null;
 
@@ -79,7 +77,8 @@ async function openFilePicker() {
     variant="tonal"
     prepend-icon="mdi-folder-open-outline"
     :disabled="isDisabled"
-    @click="openFilePicker">
+    @click="openFilePicker"
+  >
     {{ $t("batch.upload.chooseFiles") }}
   </v-btn>
 </template>

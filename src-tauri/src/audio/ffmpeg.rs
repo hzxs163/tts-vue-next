@@ -1,14 +1,20 @@
 use std::env;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::time::Duration;
 
 use tauri::utils::platform;
 use tokio::process::Command;
+
+use crate::utils::fs::{partial_path, replace_file};
 
 const SUPPORTED_FORMATS: &[&str] = &["mp3", "wav", "ogg", "flac"];
 const FFMPEG_ENV_VAR: &str = "TTS_VUE_NEXT_FFMPEG";
 const BUNDLED_FFMPEG_BINARY: &str = "ffmpeg";
 const DEFAULT_FFMPEG_BINARY: &str = "ffmpeg";
+/// A hung transcode must not block the batch queue forever. Ten minutes is far
+/// beyond a normal conversion, even for a multi-hour audiobook.
+const FFMPEG_TIMEOUT: Duration = Duration::from_secs(600);
 
 struct ResolvedFFmpegProgram {
     program: String,
@@ -21,35 +27,62 @@ enum FFmpegProgramSource {
     PathFallback,
 }
 
-pub async fn convert_audio(input_path: &str, output_path: &str, format: &str) -> Result<(), String> {
+pub async fn convert_audio(
+    input_path: &str,
+    output_path: &str,
+    format: &str,
+) -> Result<(), String> {
     validate_format(format)?;
 
     let resolved_program = resolve_ffmpeg_program()?;
+    let target_path = Path::new(output_path);
+    let temp_path = partial_path(target_path);
     let mut command = Command::new(&resolved_program.program);
     command
+        .kill_on_drop(true)
         .arg("-i")
         .arg(input_path)
         .arg("-y")
+        .arg("-hide_banner")
+        .arg("-nostdin")
+        .arg("-loglevel")
+        .arg("error")
         .args(format_args(format))
-        .arg(output_path)
+        .arg(&temp_path)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
-    let output = command
-        .output()
-        .await
-        .map_err(|error| format_ffmpeg_launch_error(&resolved_program, error))?;
-
-    if output.status.success() {
-        Ok(())
-    } else {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        if stderr.is_empty() {
-            Err("ffmpeg error: unknown error".to_string())
-        } else {
-            Err(format!("ffmpeg error: {stderr}"))
+    let output = match tokio::time::timeout(FFMPEG_TIMEOUT, command.output()).await {
+        Ok(Ok(output)) => output,
+        Ok(Err(error)) => {
+            remove_partial_output(&temp_path).await;
+            return Err(format_ffmpeg_launch_error(&resolved_program, error));
         }
+        Err(_) => {
+            remove_partial_output(&temp_path).await;
+            return Err(format!(
+                "ffmpeg timed out after {} seconds while converting {}",
+                FFMPEG_TIMEOUT.as_secs(),
+                Path::new(input_path).display()
+            ));
+        }
+    };
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        remove_partial_output(&temp_path).await;
+        return Err(if stderr.is_empty() {
+            "ffmpeg error: unknown error".to_string()
+        } else {
+            format!("ffmpeg error: {stderr}")
+        });
     }
+
+    replace_file(&temp_path, target_path).await
+}
+
+async fn remove_partial_output(path: &Path) {
+    let _ = tokio::fs::remove_file(path).await;
 }
 
 #[cfg(test)]
@@ -114,13 +147,18 @@ fn resolve_ffmpeg_program() -> Result<ResolvedFFmpegProgram, String> {
 
 fn resolve_bundled_ffmpeg_program() -> Option<String> {
     let program = bundled_ffmpeg_path().ok()?;
-    program.is_file().then(|| program.to_string_lossy().into_owned())
+    program
+        .is_file()
+        .then(|| program.to_string_lossy().into_owned())
 }
 
 fn bundled_ffmpeg_path() -> Result<PathBuf, std::io::Error> {
     let exe_path = platform::current_exe()?;
     let exe_dir = exe_path.parent().ok_or_else(|| {
-        std::io::Error::new(std::io::ErrorKind::NotFound, "current executable has no parent")
+        std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "current executable has no parent",
+        )
     })?;
     let base_dir = if exe_dir.ends_with("deps") {
         exe_dir.parent().unwrap_or(exe_dir)
@@ -139,7 +177,10 @@ fn sidecar_filename() -> &'static str {
     }
 }
 
-fn format_ffmpeg_launch_error(resolved_program: &ResolvedFFmpegProgram, error: std::io::Error) -> String {
+fn format_ffmpeg_launch_error(
+    resolved_program: &ResolvedFFmpegProgram,
+    error: std::io::Error,
+) -> String {
     match resolved_program.source {
         FFmpegProgramSource::Bundled => format!(
             "Failed to run bundled ffmpeg ({}): {}. The packaged runtime may be missing or invalid.",
@@ -242,7 +283,9 @@ mod tests {
         let output_path = unique_temp_path("ogg");
         let bundled_ffmpeg_path = bundled_ffmpeg_path_for_current_test_exe();
         let backup_path = backup_bundled_ffmpeg().await;
-        tokio::fs::write(&input_path, b"fake mp3 bytes").await.unwrap();
+        tokio::fs::write(&input_path, b"fake mp3 bytes")
+            .await
+            .unwrap();
         tokio::fs::write(&bundled_ffmpeg_path, b"not an executable")
             .await
             .unwrap();
@@ -263,6 +306,70 @@ mod tests {
 
         let _ = tokio::fs::remove_file(input_path).await;
         let _ = tokio::fs::remove_file(output_path).await;
+    }
+
+    #[tokio::test]
+    async fn test_convert_audio_with_real_ffmpeg_writes_valid_output_atomically() {
+        let _guard = TEST_MUTEX.lock().await;
+        env::remove_var(FFMPEG_ENV_VAR);
+        let input_path = unique_temp_path("wav");
+        let output_path = unique_temp_path("wav");
+        write_silent_wav(&input_path, 24_000, 0.3);
+
+        let result = convert_audio(
+            input_path.to_string_lossy().as_ref(),
+            output_path.to_string_lossy().as_ref(),
+            "wav",
+        )
+        .await;
+
+        assert!(result.is_ok(), "{result:?}");
+        let bytes = tokio::fs::read(&output_path).await.unwrap();
+        assert!(bytes.starts_with(b"RIFF"), "output is not a WAV file");
+        assert!(
+            !partial_path(Path::new(&output_path)).exists(),
+            "a successful conversion must not leave a partial file"
+        );
+
+        let _ = tokio::fs::remove_file(input_path).await;
+        let _ = tokio::fs::remove_file(output_path).await;
+    }
+
+    #[tokio::test]
+    async fn test_convert_audio_removes_partial_output_when_ffmpeg_fails() {
+        let _guard = TEST_MUTEX.lock().await;
+        let input_path = unique_temp_audio_path();
+        let output_path = unique_temp_path("ogg");
+        let fake_ffmpeg_path = unique_temp_path(script_extension());
+        let backup_path = backup_bundled_ffmpeg().await;
+        create_failing_ffmpeg(&fake_ffmpeg_path).await;
+        tokio::fs::write(&input_path, b"fake mp3 bytes")
+            .await
+            .unwrap();
+
+        env::set_var(FFMPEG_ENV_VAR, &fake_ffmpeg_path);
+        let error = convert_audio(
+            input_path.to_string_lossy().as_ref(),
+            output_path.to_string_lossy().as_ref(),
+            "ogg",
+        )
+        .await
+        .unwrap_err();
+        env::remove_var(FFMPEG_ENV_VAR);
+        restore_bundled_ffmpeg(backup_path).await;
+
+        assert!(error.contains("ffmpeg error"));
+        assert!(
+            !Path::new(&output_path).exists(),
+            "a failed conversion must not leave a target file"
+        );
+        assert!(
+            !partial_path(Path::new(&output_path)).exists(),
+            "a failed conversion must not leave a partial file"
+        );
+
+        let _ = tokio::fs::remove_file(input_path).await;
+        let _ = tokio::fs::remove_file(fake_ffmpeg_path).await;
     }
 
     #[tokio::test]
@@ -327,7 +434,10 @@ mod tests {
         restore_bundled_ffmpeg(backup_path).await;
 
         assert!(result.is_ok(), "{result:?}");
-        assert_eq!(tokio::fs::read(&output_path).await.unwrap(), b"fake mp3 bytes");
+        assert_eq!(
+            tokio::fs::read(&output_path).await.unwrap(),
+            b"fake mp3 bytes"
+        );
         assert!(!Path::new(&temp_mp3_path).exists());
 
         let _ = tokio::fs::remove_file(output_path).await;
@@ -357,7 +467,10 @@ mod tests {
         restore_bundled_ffmpeg(backup_path).await;
 
         assert!(result.is_ok(), "{result:?}");
-        assert_eq!(tokio::fs::read(&output_path).await.unwrap(), b"fake mp3 bytes");
+        assert_eq!(
+            tokio::fs::read(&output_path).await.unwrap(),
+            b"fake mp3 bytes"
+        );
 
         let _ = tokio::fs::remove_file(input_path).await;
         let _ = tokio::fs::remove_file(output_path).await;
@@ -406,6 +519,24 @@ mod tests {
         }
     }
 
+    async fn create_failing_ffmpeg(path: &Path) {
+        #[cfg(target_os = "windows")]
+        let script = "@echo off\r\nsetlocal enabledelayedexpansion\r\nset \"last=\"\r\nfor %%a in (%*) do set \"last=%%~a\"\r\necho partial> \"!last!\"\r\nexit /b 2\r\n";
+
+        #[cfg(not(target_os = "windows"))]
+        let script = "#!/bin/sh\nfor last do :; done\nprintf partial > \"$last\"\nexit 2\n";
+
+        tokio::fs::write(path, script).await.unwrap();
+
+        #[cfg(not(target_os = "windows"))]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            let permissions = std::fs::Permissions::from_mode(0o755);
+            tokio::fs::set_permissions(path, permissions).await.unwrap();
+        }
+    }
+
     fn script_extension() -> &'static str {
         #[cfg(target_os = "windows")]
         {
@@ -424,6 +555,28 @@ mod tests {
 
     fn unique_temp_path(extension: &str) -> PathBuf {
         env::temp_dir().join(format!("tts-vue-next-{}.{}", Uuid::new_v4(), extension))
+    }
+
+    fn write_silent_wav(path: &Path, sample_rate: u32, seconds: f32) {
+        let sample_count = (sample_rate as f32 * seconds).round() as u32;
+        let data_length = sample_count * 2;
+        let mut bytes = Vec::with_capacity(44 + data_length as usize);
+
+        bytes.extend_from_slice(b"RIFF");
+        bytes.extend_from_slice(&(36 + data_length).to_le_bytes());
+        bytes.extend_from_slice(b"WAVEfmt ");
+        bytes.extend_from_slice(&16u32.to_le_bytes());
+        bytes.extend_from_slice(&1u16.to_le_bytes());
+        bytes.extend_from_slice(&1u16.to_le_bytes());
+        bytes.extend_from_slice(&sample_rate.to_le_bytes());
+        bytes.extend_from_slice(&(sample_rate * 2).to_le_bytes());
+        bytes.extend_from_slice(&2u16.to_le_bytes());
+        bytes.extend_from_slice(&16u16.to_le_bytes());
+        bytes.extend_from_slice(b"data");
+        bytes.extend_from_slice(&data_length.to_le_bytes());
+        bytes.resize(bytes.len() + data_length as usize, 0);
+
+        std::fs::write(path, bytes).unwrap();
     }
 
     fn bundled_ffmpeg_path_for_current_test_exe() -> PathBuf {

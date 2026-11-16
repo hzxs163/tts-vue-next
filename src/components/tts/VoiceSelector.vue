@@ -46,14 +46,16 @@ const voiceItems = computed(() =>
       :label="$t('tts.options.language')"
       :loading="voicesStore.loading"
       prepend-inner-icon="mdi-translate"
-      class="mb-3" />
+      class="mb-3"
+    />
 
     <v-select
       v-model="selectedVoice"
       :items="voiceItems"
       :label="$t('tts.options.voice')"
       :loading="voicesStore.loading"
-      prepend-inner-icon="mdi-account-voice" />
+      prepend-inner-icon="mdi-account-voice"
+    />
 
     <p v-if="voicesStore.usingCache" class="voice-selector__cache-hint">
       {{ $t("errors.voiceCache") }}

@@ -1,0 +1,7 @@
+node_modules
+dist
+coverage
+src-tauri
+pnpm-lock.yaml
+src/styles/mdi-subset.css
+src/assets

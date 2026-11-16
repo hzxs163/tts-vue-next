@@ -51,10 +51,7 @@ function writeVoiceCache(voices: Voice[]): void {
   }
 
   try {
-    window.localStorage.setItem(
-      VOICE_CACHE_KEY,
-      JSON.stringify({ savedAt: Date.now(), voices }),
-    );
+    window.localStorage.setItem(VOICE_CACHE_KEY, JSON.stringify({ savedAt: Date.now(), voices }));
   } catch {
     return;
   }
@@ -65,9 +62,7 @@ function resolveSelection(
   selectedLocale: string,
   selectedVoice: string,
 ): Pick<VoicesState, "selectedLocale" | "selectedVoice"> {
-  const matchingVoice = voices.find(
-    (voice) => voice.ShortName === selectedVoice,
-  );
+  const matchingVoice = voices.find((voice) => voice.ShortName === selectedVoice);
   if (matchingVoice) {
     return {
       selectedLocale: matchingVoice.Locale,
@@ -115,21 +110,15 @@ export const useVoicesStore = defineStore("voices", {
 
   getters: {
     locales(state): string[] {
-      return Array.from(
-        new Set(state.voices.map((voice) => voice.Locale)),
-      ).sort();
+      return Array.from(new Set(state.voices.map((voice) => voice.Locale))).sort();
     },
 
     filteredVoices(state): Voice[] {
-      return state.voices.filter(
-        (voice) => voice.Locale === state.selectedLocale,
-      );
+      return state.voices.filter((voice) => voice.Locale === state.selectedLocale);
     },
 
     currentVoice(state): Voice | undefined {
-      return state.voices.find(
-        (voice) => voice.ShortName === state.selectedVoice,
-      );
+      return state.voices.find((voice) => voice.ShortName === state.selectedVoice);
     },
   },
 
@@ -143,11 +132,7 @@ export const useVoicesStore = defineStore("voices", {
 
       try {
         const voices = await invoke<Voice[]>("get_voices");
-        const selection = resolveSelection(
-          voices,
-          this.selectedLocale,
-          this.selectedVoice,
-        );
+        const selection = resolveSelection(voices, this.selectedLocale, this.selectedVoice);
 
         writeVoiceCache(voices);
         this.$patch({
@@ -170,11 +155,7 @@ export const useVoicesStore = defineStore("voices", {
           return;
         }
 
-        const selection = resolveSelection(
-          cached.voices,
-          this.selectedLocale,
-          this.selectedVoice,
-        );
+        const selection = resolveSelection(cached.voices, this.selectedLocale, this.selectedVoice);
         this.$patch({
           voices: cached.voices,
           error: message,
@@ -188,9 +169,7 @@ export const useVoicesStore = defineStore("voices", {
     },
 
     setLocale(locale: string) {
-      const firstVoiceForLocale = this.voices.find(
-        (voice) => voice.Locale === locale,
-      );
+      const firstVoiceForLocale = this.voices.find((voice) => voice.Locale === locale);
       if (!firstVoiceForLocale) {
         return;
       }

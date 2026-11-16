@@ -93,12 +93,8 @@ describe("AppLayout", () => {
     expect(wrapper.text()).toContain("TTS");
     expect(wrapper.text()).toContain("Batch Convert");
     expect(wrapper.text()).toContain("Settings");
-    expect(wrapper.get('[data-testid="sidebar-version"]').text()).toContain(
-      "Version v0.1.0",
-    );
-    expect(
-      wrapper.find('[data-testid="sidebar-version-update-icon"]').exists(),
-    ).toBe(false);
+    expect(wrapper.get('[data-testid="sidebar-version"]').text()).toContain("Version v0.1.0");
+    expect(wrapper.find('[data-testid="sidebar-version-update-icon"]').exists()).toBe(false);
     expect(wrapper.find(".app-shell").exists()).toBe(true);
     expect(wrapper.find(".app-main-shell").exists()).toBe(true);
   });
@@ -137,8 +133,6 @@ describe("AppLayout", () => {
     const version = wrapper.get('[data-testid="sidebar-version"]');
     expect(version.classes()).toContain("app-sidebar__footer--update");
     expect(version.text()).toContain("Version v0.1.0 → v0.2.0");
-    expect(
-      wrapper.find('[data-testid="sidebar-version-update-icon"]').exists(),
-    ).toBe(true);
+    expect(wrapper.find('[data-testid="sidebar-version-update-icon"]').exists()).toBe(true);
   });
 });

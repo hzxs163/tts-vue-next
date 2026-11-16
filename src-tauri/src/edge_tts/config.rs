@@ -7,9 +7,7 @@
 
 use std::sync::LazyLock;
 
-use crate::edge_tts::constants::{
-    SEC_MS_GEC_VERSION, USER_AGENT, VOICE_LIST_URL, WSS_URL,
-};
+use crate::edge_tts::constants::{SEC_MS_GEC_VERSION, USER_AGENT, VOICE_LIST_URL, WSS_URL};
 
 pub const ENV_WSS_URL: &str = "TTS_EDGE_WSS_URL";
 pub const ENV_VOICE_LIST_URLS: &str = "TTS_EDGE_VOICE_LIST_URLS";

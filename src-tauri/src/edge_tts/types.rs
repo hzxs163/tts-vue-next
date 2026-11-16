@@ -74,11 +74,3 @@ pub struct VoiceTag {
     #[serde(rename = "VoicePersonalities", default)]
     pub voice_personalities: Vec<String>,
 }
-
-#[derive(Debug, Default)]
-pub struct CommunicateState {
-    pub offset_compensation: u64,
-    pub last_duration_offset: u64,
-    pub chunk_audio_bytes: u64,
-    pub cumulative_audio_bytes: u64,
-}

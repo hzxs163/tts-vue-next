@@ -21,6 +21,7 @@ export interface TtsParams {
   format: string;
   task_id: string;
   max_retries: number;
+  chunk_concurrency: number;
 }
 
 export interface BatchFile {
@@ -28,7 +29,7 @@ export interface BatchFile {
   name: string;
   path: string;
   size: number;
-  status: "pending" | "processing" | "done" | "error";
+  status: "pending" | "processing" | "done" | "error" | "skipped";
   progress: number;
   error?: string;
   outputPath?: string;
@@ -40,6 +41,7 @@ export interface TtsSettings {
   maxRetries: number;
   fileConcurrency: number;
   chunkConcurrency: number;
+  conflictStrategy: ConflictStrategy;
   autoplay: boolean;
   language: AppLanguage;
   themeMode: ThemeMode;
@@ -59,5 +61,6 @@ export interface ServiceStatus {
 }
 
 export type OutputFormat = "mp3" | "wav" | "ogg" | "flac";
+export type ConflictStrategy = "overwrite" | "skip" | "rename";
 export type AppLanguage = "zh-CN" | "en-US";
 export type ThemeMode = "system" | "light" | "dark";

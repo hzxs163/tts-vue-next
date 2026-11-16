@@ -1,10 +1,5 @@
 import { defineStore } from "pinia";
-import type {
-  AppLanguage,
-  OutputFormat,
-  ThemeMode,
-  TtsSettings,
-} from "../types";
+import type { AppLanguage, ConflictStrategy, OutputFormat, ThemeMode, TtsSettings } from "../types";
 
 const MIN_RETRIES = 1;
 const MAX_RETRIES = 10;
@@ -30,6 +25,7 @@ export const useSettingsStore = defineStore("settings", {
     maxRetries: 3,
     fileConcurrency: 3,
     chunkConcurrency: 3,
+    conflictStrategy: "rename",
     autoplay: true,
     language: "zh-CN",
     themeMode: "system",
@@ -49,12 +45,7 @@ export const useSettingsStore = defineStore("settings", {
     },
     updateFileConcurrency(count: number) {
       this.$patch({
-        fileConcurrency: clampFinite(
-          count,
-          this.fileConcurrency,
-          MIN_CONCURRENCY,
-          MAX_CONCURRENCY,
-        ),
+        fileConcurrency: clampFinite(count, this.fileConcurrency, MIN_CONCURRENCY, MAX_CONCURRENCY),
       });
     },
     updateChunkConcurrency(count: number) {
@@ -66,6 +57,9 @@ export const useSettingsStore = defineStore("settings", {
           MAX_CONCURRENCY,
         ),
       });
+    },
+    updateConflictStrategy(conflictStrategy: ConflictStrategy) {
+      this.$patch({ conflictStrategy });
     },
     updateAutoplay(autoplay: boolean) {
       this.$patch({ autoplay });

@@ -1,9 +1,11 @@
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
+use futures_util::stream::FuturesUnordered;
 use futures_util::{SinkExt, StreamExt};
 use tokio::net::TcpStream;
-use tokio::sync::{watch, Mutex};
+use tokio::sync::watch;
 use tokio_tungstenite::tungstenite::{client::IntoClientRequest, Error as WebSocketError, Message};
 use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
 use url::Url;
@@ -19,20 +21,22 @@ use crate::edge_tts::errors::EdgeTTSError;
 use crate::edge_tts::split_text::split_text_by_byte_length;
 use crate::edge_tts::ssml::build_ssml;
 
-use crate::edge_tts::types::{CommunicateState, TTSConfig};
+use crate::edge_tts::types::TTSConfig;
 
 type EdgeWebSocket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
-const CONNECT_TIMEOUT: std::time::Duration =
-    std::time::Duration::from_secs(CONNECT_TIMEOUT_SECS);
-const RECEIVE_TIMEOUT: std::time::Duration =
-    std::time::Duration::from_secs(RECEIVE_TIMEOUT_SECS);
+const CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(CONNECT_TIMEOUT_SECS);
+const RECEIVE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(RECEIVE_TIMEOUT_SECS);
+/// Upper bound for parallel chunk synthesis. The batch queue multiplies this by
+/// its file concurrency, so keep it conservative to stay friendly to the service.
+const MAX_CHUNK_CONCURRENCY: usize = 8;
 
 pub struct Communicate {
     config: TTSConfig,
     text: String,
     cancel_rx: watch::Receiver<bool>,
     progress: Option<Arc<dyn Fn(usize, usize) + Send + Sync>>,
+    chunk_concurrency: usize,
 }
 
 impl Communicate {
@@ -42,6 +46,7 @@ impl Communicate {
             text,
             cancel_rx,
             progress: None,
+            chunk_concurrency: 1,
         }
     }
 
@@ -54,8 +59,14 @@ impl Communicate {
         self
     }
 
+    /// Number of text chunks synthesized in parallel, clamped to `1..=8`.
+    pub fn with_chunk_concurrency(mut self, chunk_concurrency: usize) -> Self {
+        self.chunk_concurrency = chunk_concurrency.clamp(1, MAX_CHUNK_CONCURRENCY);
+        self
+    }
+
     pub async fn stream_audio(&self) -> Result<Vec<u8>, EdgeTTSError> {
-        self.stream_chunk_sequence_with_timeout(config::get().wss_url.as_str(), RECEIVE_TIMEOUT, Arc::new(Mutex::new(CommunicateState::default())))
+        self.stream_chunk_sequence_with_timeout(config::get().wss_url.as_str(), RECEIVE_TIMEOUT)
             .await
     }
 
@@ -65,19 +76,14 @@ impl Communicate {
         base_url: &str,
         receive_timeout: std::time::Duration,
     ) -> Result<Vec<u8>, EdgeTTSError> {
-        self.stream_chunk_sequence_with_timeout(
-            base_url,
-            receive_timeout,
-            Arc::new(Mutex::new(CommunicateState::default())),
-        )
-        .await
+        self.stream_chunk_sequence_with_timeout(base_url, receive_timeout)
+            .await
     }
 
     async fn stream_chunk_sequence_with_timeout(
         &self,
         base_url: &str,
         receive_timeout: std::time::Duration,
-        state: Arc<Mutex<CommunicateState>>,
     ) -> Result<Vec<u8>, EdgeTTSError> {
         if *self.cancel_rx.borrow() {
             return Err(EdgeTTSError::Cancelled);
@@ -88,31 +94,52 @@ impl Communicate {
             return Err(EdgeTTSError::NoAudioReceived);
         }
 
+        let total = chunks.len();
+        let concurrency = self.chunk_concurrency.clamp(1, total);
+        let completed = Arc::new(AtomicUsize::new(0));
+
+        // Chunks are synthesized concurrently, but audio must be concatenated in
+        // text order; the index travels with each result for the final sort.
+        let mut pending = FuturesUnordered::new();
+        let mut ordered: Vec<(usize, Vec<u8>)> = Vec::with_capacity(total);
+        let mut next_chunk = 0;
+
+        while next_chunk < total || !pending.is_empty() {
+            while next_chunk < total && pending.len() < concurrency {
+                let index = next_chunk;
+                let chunk_text = &chunks[index];
+                let completed = Arc::clone(&completed);
+                next_chunk += 1;
+
+                pending.push(async move {
+                    if *self.cancel_rx.borrow() {
+                        return Err(EdgeTTSError::Cancelled);
+                    }
+
+                    let audio = self
+                        .stream_single_chunk_with_timeout(chunk_text, base_url, receive_timeout)
+                        .await?;
+
+                    let done = completed.fetch_add(1, Ordering::SeqCst) + 1;
+                    if let Some(callback) = &self.progress {
+                        callback(done, total);
+                    }
+
+                    Ok::<(usize, Vec<u8>), EdgeTTSError>((index, audio))
+                });
+            }
+
+            let Some(result) = pending.next().await else {
+                break;
+            };
+            ordered.push(result?);
+        }
+
+        ordered.sort_by_key(|(index, _)| *index);
+
         let mut all_audio = Vec::new();
-
-        for (index, chunk_text) in chunks.iter().enumerate() {
-            if *self.cancel_rx.borrow() {
-                return Err(EdgeTTSError::Cancelled);
-            }
-
-            let audio = self
-                .stream_single_chunk_with_timeout(
-                    chunk_text,
-                    base_url,
-                    receive_timeout,
-                    Arc::clone(&state),
-                )
-                .await?;
+        for (_, audio) in ordered {
             all_audio.extend_from_slice(&audio);
-
-            let mut state = state.lock().await;
-            state.cumulative_audio_bytes += state.chunk_audio_bytes;
-            state.offset_compensation = state.cumulative_audio_bytes;
-            state.last_duration_offset = state.cumulative_audio_bytes;
-
-            if let Some(callback) = &self.progress {
-                callback(index + 1, chunks.len());
-            }
         }
 
         if all_audio.is_empty() {
@@ -127,28 +154,25 @@ impl Communicate {
         chunk_text: &str,
         base_url: &str,
         receive_timeout: std::time::Duration,
-        state: Arc<Mutex<CommunicateState>>,
     ) -> Result<Vec<u8>, EdgeTTSError> {
         let mut socket = self.connect_websocket(base_url).await?;
         let request_id = generate_request_id();
 
         socket
-            .send(Message::Text(build_speech_config_message(&self.config).into()))
+            .send(Message::Text(
+                build_speech_config_message(&self.config).into(),
+            ))
             .await
             .map_err(map_websocket_message_error)?;
         socket
-            .send(Message::Text(build_ssml_message(&request_id, chunk_text, &self.config).into()))
+            .send(Message::Text(
+                build_ssml_message(&request_id, chunk_text, &self.config).into(),
+            ))
             .await
             .map_err(map_websocket_message_error)?;
 
         let mut audio = Vec::new();
         let mut cancel_rx = self.cancel_rx.clone();
-
-        {
-            let mut state = state.lock().await;
-            state.chunk_audio_bytes = 0;
-            state.last_duration_offset = state.cumulative_audio_bytes;
-        }
 
         loop {
             if *cancel_rx.borrow() {
@@ -203,10 +227,6 @@ impl Communicate {
                         match headers.get("Path").map(String::as_str) {
                             Some("audio") if !payload.is_empty() => {
                                 audio.extend_from_slice(payload);
-                                let mut state = state.lock().await;
-                                state.chunk_audio_bytes += payload.len() as u64;
-                                state.last_duration_offset =
-                                    state.cumulative_audio_bytes + state.chunk_audio_bytes;
                             }
                             Some("turn.end") => break,
                             _ => {}
@@ -262,11 +282,12 @@ async fn connect_websocket_once(
         ConnectAttemptError::Edge(EdgeTTSError::ConnectionError(error.to_string()))
     })?;
 
-    request.headers_mut().insert("Origin", ORIGIN.parse().unwrap());
-    request.headers_mut().insert(
-        "User-Agent",
-        config::get().user_agent.parse().unwrap(),
-    );
+    request
+        .headers_mut()
+        .insert("Origin", ORIGIN.parse().unwrap());
+    request
+        .headers_mut()
+        .insert("User-Agent", config::get().user_agent.parse().unwrap());
     request.headers_mut().insert(
         "Sec-CH-UA",
         format!(
@@ -278,17 +299,18 @@ async fn connect_websocket_once(
     request
         .headers_mut()
         .insert("Sec-CH-UA-Mobile", "?0".parse().unwrap());
-    request
-        .headers_mut()
-        .insert("Cookie", format!("muid={};", generate_muid()).parse().unwrap());
+    request.headers_mut().insert(
+        "Cookie",
+        format!("muid={};", generate_muid()).parse().unwrap(),
+    );
 
     let connect_result = tokio::time::timeout(connect_timeout, connect_async(request))
-    .await
-    .map_err(|_| {
-        ConnectAttemptError::Edge(EdgeTTSError::ConnectionError(
-            "Connection timeout".to_string(),
-        ))
-    })?;
+        .await
+        .map_err(|_| {
+            ConnectAttemptError::Edge(EdgeTTSError::ConnectionError(
+                "Connection timeout".to_string(),
+            ))
+        })?;
 
     match connect_result {
         Ok((socket, _)) => Ok(socket),
@@ -330,8 +352,8 @@ pub async fn probe_wss() -> Result<(), EdgeTTSError> {
 }
 
 fn build_websocket_url(base_url: &str) -> Result<String, EdgeTTSError> {
-    let mut url = Url::parse(base_url)
-        .map_err(|error| EdgeTTSError::ConnectionError(error.to_string()))?;
+    let mut url =
+        Url::parse(base_url).map_err(|error| EdgeTTSError::ConnectionError(error.to_string()))?;
     let connection_id = generate_request_id();
     let sec_ms_gec = generate_sec_ms_gec();
 
@@ -515,7 +537,8 @@ mod tests {
     async fn test_stream_audio_honors_preemptive_cancellation() {
         let (cancel_tx, cancel_rx) = watch::channel(false);
         cancel_tx.send(true).unwrap();
-        let communicate = Communicate::new("hello world".to_string(), TTSConfig::default(), cancel_rx);
+        let communicate =
+            Communicate::new("hello world".to_string(), TTSConfig::default(), cancel_rx);
 
         let error = communicate.stream_audio().await.unwrap_err();
 
@@ -526,7 +549,8 @@ mod tests {
     async fn test_connect_websocket_returns_timeout_when_handshake_stalls() {
         let base_url = spawn_stalled_tcp_server().await;
         let (_cancel_tx, cancel_rx) = watch::channel(false);
-        let communicate = Communicate::new("hello world".to_string(), TTSConfig::default(), cancel_rx);
+        let communicate =
+            Communicate::new("hello world".to_string(), TTSConfig::default(), cancel_rx);
 
         let error = communicate
             .connect_websocket_with_timeout(&base_url, Duration::from_millis(50))
@@ -545,7 +569,8 @@ mod tests {
     async fn test_stream_audio_returns_timeout_when_server_stalls() {
         let base_url = spawn_silent_websocket_server().await;
         let (_cancel_tx, cancel_rx) = watch::channel(false);
-        let communicate = Communicate::new("hello world".to_string(), TTSConfig::default(), cancel_rx);
+        let communicate =
+            Communicate::new("hello world".to_string(), TTSConfig::default(), cancel_rx);
 
         let error = communicate
             .stream_audio_with_timeout(&base_url, Duration::from_millis(50))
@@ -561,7 +586,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_stream_audio_updates_communicate_state_consistently_across_chunks() {
+    async fn test_stream_audio_reports_progress_and_concatenates_all_chunks() {
         let text = "你好 ".repeat(1500);
         let chunks = split_text_by_byte_length(&text);
         assert!(chunks.len() > 1);
@@ -569,32 +594,27 @@ mod tests {
         let payloads: Vec<Vec<u8>> = (0..chunks.len())
             .map(|index| format!("chunk-{index}").into_bytes())
             .collect();
-        let expected_total = payloads.iter().map(|payload| payload.len() as u64).sum::<u64>();
-        let state = Arc::new(Mutex::new(CommunicateState::default()));
+        let expected_audio: Vec<u8> = payloads.concat();
         let connection_count = Arc::new(AtomicUsize::new(0));
-        let base_url =
-            spawn_chunked_audio_server(payloads, Arc::clone(&connection_count)).await;
+        let base_url = spawn_chunked_audio_server(payloads, Arc::clone(&connection_count)).await;
         let (_cancel_tx, cancel_rx) = watch::channel(false);
         let progress = Arc::new(std::sync::Mutex::new(Vec::<(usize, usize)>::new()));
         let progress_for_callback = Arc::clone(&progress);
-        let communicate = Communicate::new(text, TTSConfig::default(), cancel_rx)
-            .with_progress(move |completed, total| {
+        let communicate = Communicate::new(text, TTSConfig::default(), cancel_rx).with_progress(
+            move |completed, total| {
                 progress_for_callback
                     .lock()
                     .unwrap()
                     .push((completed, total));
-            });
+            },
+        );
 
         let audio = communicate
-            .stream_chunk_sequence_with_timeout(&base_url, RECEIVE_TIMEOUT, Arc::clone(&state))
+            .stream_audio_with_timeout(&base_url, RECEIVE_TIMEOUT)
             .await
             .unwrap();
 
-        assert_eq!(audio.len() as u64, expected_total);
-        let state = state.lock().await;
-        assert_eq!(state.cumulative_audio_bytes, expected_total);
-        assert_eq!(state.offset_compensation, expected_total);
-        assert_eq!(state.last_duration_offset, expected_total);
+        assert_eq!(audio, expected_audio);
         assert_eq!(connection_count.load(Ordering::SeqCst), chunks.len());
         let events = progress.lock().unwrap();
         assert_eq!(events.len(), chunks.len());
@@ -602,46 +622,31 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_stream_single_chunk_keeps_last_duration_offset_global_while_receiving_audio() {
-        let first_payload = b"abc".to_vec();
-        let second_payload = b"de".to_vec();
-        let expected_total = 10_u64;
-        let state = Arc::new(Mutex::new(CommunicateState {
-            offset_compensation: expected_total,
-            last_duration_offset: expected_total,
-            chunk_audio_bytes: 0,
-            cumulative_audio_bytes: expected_total,
-        }));
-        let observed_offsets = Arc::new(Mutex::new(Vec::new()));
-        let base_url = spawn_observing_audio_server(
-            vec![first_payload.clone(), second_payload.clone()],
-            Arc::clone(&state),
-            Arc::clone(&observed_offsets),
-        )
-        .await;
+    async fn test_stream_audio_synthesizes_chunks_concurrently_and_preserves_order() {
+        let text = "concurrent sentence ".repeat(900);
+        let chunks = split_text_by_byte_length(&text);
+        assert!(chunks.len() >= 4);
+
+        let concurrency = chunks.len().min(4);
+        let base_url = spawn_barrier_audio_server(concurrency).await;
         let (_cancel_tx, cancel_rx) = watch::channel(false);
-        let communicate = Communicate::new("hello world".to_string(), TTSConfig::default(), cancel_rx);
+        let communicate = Communicate::new(text, TTSConfig::default(), cancel_rx)
+            .with_chunk_concurrency(concurrency);
 
-        let audio = communicate
-            .stream_single_chunk_with_timeout(
-                "hello world",
-                &base_url,
-                RECEIVE_TIMEOUT,
-                Arc::clone(&state),
-            )
-            .await
-            .unwrap();
+        let audio = tokio::time::timeout(
+            Duration::from_secs(10),
+            communicate.stream_audio_with_timeout(&base_url, RECEIVE_TIMEOUT),
+        )
+        .await
+        .expect("chunks were not synthesized concurrently")
+        .unwrap();
 
-        assert_eq!(audio, [first_payload, second_payload].concat());
-        let observed_offsets = observed_offsets.lock().await.clone();
-        assert_eq!(observed_offsets, vec![expected_total + 3, expected_total + 5]);
-
-        let state = state.lock().await;
-        assert_eq!(state.chunk_audio_bytes, 5);
-        assert_eq!(state.last_duration_offset, expected_total + 5);
-        assert_eq!(state.cumulative_audio_bytes, expected_total);
+        let expected: Vec<u8> = chunks
+            .iter()
+            .flat_map(|chunk| chunk.as_bytes().to_vec())
+            .collect();
+        assert_eq!(audio, expected, "audio must stay in text order");
     }
-
 
     async fn spawn_stalled_tcp_server() -> String {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -690,61 +695,74 @@ mod tests {
         format!("ws://{address}/edge/v1")
     }
 
-    async fn spawn_observing_audio_server(
-        payloads: Vec<Vec<u8>>,
-        state: Arc<Mutex<CommunicateState>>,
-        observed_offsets: Arc<Mutex<Vec<u64>>>,
-    ) -> String {
+    /// First `expected_concurrent` connections must arrive before any of them
+    /// replies. A sequential implementation therefore times out instead of
+    /// producing a false positive.
+    async fn spawn_barrier_audio_server(expected_concurrent: usize) -> String {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
+        let barrier = Arc::new(tokio::sync::Barrier::new(expected_concurrent));
+        let arrived = Arc::new(AtomicUsize::new(0));
 
         tokio::spawn(async move {
-            let (stream, _) = listener.accept().await.unwrap();
-            let mut websocket = accept_async(stream).await.unwrap();
-            let _ = websocket.next().await;
-            let _ = websocket.next().await;
-            let mut expected_chunk_bytes = 0_u64;
+            loop {
+                let Ok((stream, _)) = listener.accept().await else {
+                    break;
+                };
+                let barrier = Arc::clone(&barrier);
+                let arrived = Arc::clone(&arrived);
 
-            for payload in payloads {
-                let headers = b"Path:audio\r\nContent-Type:audio/mpeg";
-                let mut frame = Vec::new();
-                frame.extend_from_slice(&(headers.len() as u16).to_be_bytes());
-                frame.extend_from_slice(headers);
-                frame.extend_from_slice(&payload);
+                tokio::spawn(async move {
+                    let Ok(mut websocket) = accept_async(stream).await else {
+                        return;
+                    };
+                    let _ = websocket.next().await;
+                    let Some(Ok(ssml)) = websocket.next().await else {
+                        return;
+                    };
+                    let payload = extract_ssml_text(&ssml);
 
-                websocket.send(Message::Binary(frame.into())).await.unwrap();
-                expected_chunk_bytes += payload.len() as u64;
-                wait_for_chunk_progress(&state, expected_chunk_bytes).await;
+                    if arrived.fetch_add(1, Ordering::SeqCst) < expected_concurrent {
+                        barrier.wait().await;
+                    }
 
-                let current_offset = state.lock().await.last_duration_offset;
-                observed_offsets.lock().await.push(current_offset);
+                    let headers = b"Path:audio\r\nContent-Type:audio/mpeg";
+                    let mut frame = Vec::new();
+                    frame.extend_from_slice(&(headers.len() as u16).to_be_bytes());
+                    frame.extend_from_slice(headers);
+                    frame.extend_from_slice(&payload);
+
+                    let _ = websocket.send(Message::Binary(frame.into())).await;
+                    let _ = websocket
+                        .send(Message::Text("Path:turn.end\r\n\r\n".into()))
+                        .await;
+                    let _ = websocket.close(None).await;
+                });
             }
-
-            websocket
-                .send(Message::Text("Path:turn.end\r\n\r\n".into()))
-                .await
-                .unwrap();
-            websocket.close(None).await.unwrap();
         });
 
         format!("ws://{address}/edge/v1")
     }
 
-    async fn wait_for_chunk_progress(
-        state: &Arc<Mutex<CommunicateState>>,
-        expected_chunk_bytes: u64,
-    ) {
-        for _ in 0..50 {
-            {
-                let state = state.lock().await;
-                if state.chunk_audio_bytes >= expected_chunk_bytes {
-                    return;
-                }
-            }
-            sleep(Duration::from_millis(5)).await;
-        }
+    fn extract_ssml_text(message: &Message) -> Vec<u8> {
+        let Message::Text(text) = message else {
+            return Vec::new();
+        };
 
-        panic!("timed out waiting for chunk_audio_bytes to reach {expected_chunk_bytes}");
+        let Some(prosody_start) = text.find("<prosody") else {
+            return Vec::new();
+        };
+        let Some(open_end) = text[prosody_start..].find('>') else {
+            return Vec::new();
+        };
+        let content_start = prosody_start + open_end + 1;
+        let Some(content_end) = text[content_start..].find("</prosody>") else {
+            return Vec::new();
+        };
+
+        text[content_start..content_start + content_end]
+            .as_bytes()
+            .to_vec()
     }
 
     async fn spawn_chunked_audio_server(

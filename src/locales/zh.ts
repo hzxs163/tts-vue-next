@@ -28,6 +28,7 @@ export default {
     textInput: {
       title: "文本输入",
       placeholder: "请输入要转换为语音的文本...",
+      clear: "清空文本",
     },
     options: {
       title: "语音控制面板",
@@ -47,6 +48,7 @@ export default {
       saveGeneratedAudio: "保存生成的音频",
       saveFilterName: "音频文件",
       defaultFileName: "语音输出.{ext}",
+      saved: "已保存到 {path}",
     },
   },
   batch: {
@@ -60,13 +62,13 @@ export default {
     },
     actions: {
       startAll: "全部开始",
+      stopAll: "停止全部",
       clear: "清空",
       concurrency: "并发数",
     },
     upload: {
       title: "将文本文件拖入队列",
-      description:
-        "点击浏览，或将 `.txt`、`.md`、`.markdown` 和 `.docx` 文件拖放到这里。",
+      description: "点击浏览，或将 `.txt`、`.md`、`.markdown` 和 `.docx` 文件拖放到这里。",
       chooseFiles: "选择文件",
       unsupportedFileTypes: "不支持的文件类型：{files}",
       filePickerFilterName: "文本文件",
@@ -84,6 +86,7 @@ export default {
       status: {
         completed: "已完成",
         failed: "失败",
+        skipped: "已跳过",
         processing: "处理中",
         queued: "排队中",
       },
@@ -112,6 +115,12 @@ export default {
       maxRetries: "最大重试次数",
       fileConcurrency: "文件并发数",
       chunkConcurrency: "分段并发数",
+      conflictStrategy: "同名文件处理",
+    },
+    conflictStrategies: {
+      overwrite: "覆盖已有文件",
+      skip: "跳过已有文件",
+      rename: "自动重命名",
     },
     languages: {
       zh: "简体中文",

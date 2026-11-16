@@ -3,6 +3,11 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "packageManager": "pnpm@10.6.3",
+  "engines": {
+    "node": ">=20.19.0",
+    "pnpm": ">=10.0.0"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
@@ -10,16 +15,20 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write \"src/**/*.{ts,vue,css}\" \"*.{ts,js,json}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,vue,css}\" \"*.{ts,js,json}\"",
     "ffmpeg:sync": "node sync-ffmpeg-sidecar.mjs",
     "postinstall": "pnpm ffmpeg:sync",
     "tauri": "pnpm ffmpeg:sync && tauri",
     "tauri:dev": "pnpm ffmpeg:sync && tauri dev",
     "tauri:build": "pnpm ffmpeg:sync && tauri build",
-    "tauri:build:win": "pnpm ffmpeg:sync && tauri build --target x86_64-pc-windows-msvc",
-    "tauri:build:mac": "pnpm ffmpeg:sync && tauri build --target universal-apple-darwin",
-    "tauri:build:mac:intel": "pnpm ffmpeg:sync && tauri build --target x86_64-apple-darwin",
-    "tauri:build:mac:arm": "pnpm ffmpeg:sync && tauri build --target aarch64-apple-darwin",
-    "tauri:build:linux": "pnpm ffmpeg:sync && tauri build --target x86_64-unknown-linux-gnu"
+    "tauri:build:win": "node sync-ffmpeg-sidecar.mjs --target x86_64-pc-windows-msvc && tauri build --target x86_64-pc-windows-msvc",
+    "tauri:build:mac": "node sync-ffmpeg-sidecar.mjs --target aarch64-apple-darwin && tauri build --target aarch64-apple-darwin",
+    "tauri:build:mac:intel": "node sync-ffmpeg-sidecar.mjs --target x86_64-apple-darwin && tauri build --target x86_64-apple-darwin",
+    "tauri:build:mac:arm": "node sync-ffmpeg-sidecar.mjs --target aarch64-apple-darwin && tauri build --target aarch64-apple-darwin",
+    "tauri:build:linux": "node sync-ffmpeg-sidecar.mjs --target x86_64-unknown-linux-gnu && tauri build --target x86_64-unknown-linux-gnu"
   },
   "dependencies": {
     "@mdi/font": "^7.4.47",
@@ -36,13 +45,20 @@
     "vuetify-message-vue3": "^1.1.2"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@tauri-apps/cli": "^2",
     "@vitejs/plugin-vue": "^5.2.1",
     "@vitest/coverage-v8": "4.1.4",
     "@vue/test-utils": "^2.4.6",
+    "eslint": "^10.15.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-vue": "^10.12.1",
+    "globals": "^17.14.0",
     "happy-dom": "^20.9.0",
+    "prettier": "^3.10.1",
     "typescript": "~5.6.2",
+    "typescript-eslint": "^8.72.2",
     "vite": "^6.0.3",
     "vitest": "^4.1.4",
     "vue-tsc": "^2.1.10"

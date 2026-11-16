@@ -24,16 +24,8 @@ import FileList from "../components/batch/FileList.vue";
   padding: 10px;
   height: 100%;
   background:
-    radial-gradient(
-      circle at top right,
-      rgba(var(--v-theme-primary), 0.08),
-      transparent 22%
-    ),
-    linear-gradient(
-      180deg,
-      rgba(var(--v-theme-surface), 1),
-      rgba(var(--v-theme-surface), 0.98)
-    );
+    radial-gradient(circle at top right, rgba(var(--v-theme-primary), 0.08), transparent 22%),
+    linear-gradient(180deg, rgba(var(--v-theme-surface), 1), rgba(var(--v-theme-surface), 0.98));
 }
 
 .batch-workspace {

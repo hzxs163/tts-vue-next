@@ -11,6 +11,12 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: invokeMock,
 }));
 
+const flushPromises = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+function resolveOutputPath(payload: unknown): string {
+  return (payload as { path: string }).path;
+}
+
 describe("useBatchStore", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
@@ -56,11 +62,7 @@ describe("useBatchStore", () => {
     const { useBatchStore } = await import("./batch");
     const store = useBatchStore();
 
-    store.addFiles([
-      "C:/docs/alpha.txt",
-      "C:/docs/beta.md",
-      "C:/docs/alpha.txt",
-    ]);
+    store.addFiles(["C:/docs/alpha.txt", "C:/docs/beta.md", "C:/docs/alpha.txt"]);
 
     expect(store.files).toHaveLength(2);
     expect(store.files.map((file) => file.name)).toEqual(["alpha.txt", "beta.md"]);
@@ -68,7 +70,10 @@ describe("useBatchStore", () => {
   });
 
   test("reads text, converts audio, and saves mp3 output through the backend command", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+    invokeMock.mockImplementation(async (command: string, payload?: unknown) => {
+      if (command === "resolve_output_path") {
+        return resolveOutputPath(payload);
+      }
       if (command === "read_text_file") {
         return "hello from file";
       }
@@ -98,6 +103,7 @@ describe("useBatchStore", () => {
         format: "audio-24khz-48kbitrate-mono-mp3",
         task_id: "00000000-0000-0000-0000-000000000001",
         max_retries: 6,
+        chunk_concurrency: 3,
       }),
     });
     expect(invokeMock).toHaveBeenCalledWith("write_binary_file", {
@@ -112,11 +118,75 @@ describe("useBatchStore", () => {
     expect(store.converting).toBe(false);
   });
 
+  test("skips files that the conflict policy resolves away", async () => {
+    const settingsStore = useSettingsStore();
+    settingsStore.updateConflictStrategy("skip");
+
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "resolve_output_path") {
+        return null;
+      }
+      throw new Error(`Unexpected command: ${command}`);
+    });
+
+    const { useBatchStore } = await import("./batch");
+    const store = useBatchStore();
+    store.addFiles(["C:/docs/alpha.txt"]);
+    await store.convertAll();
+
+    expect(store.files[0]).toMatchObject({
+      status: "skipped",
+      progress: 100,
+    });
+    expect(store.files[0].outputPath).toBeUndefined();
+    expect(invokeMock).not.toHaveBeenCalledWith("tts_convert", expect.anything());
+    expect(store.converting).toBe(false);
+  });
+
+  test("writes to the renamed path returned by the backend", async () => {
+    invokeMock.mockImplementation(async (command: string, payload?: unknown) => {
+      if (command === "resolve_output_path") {
+        expect(payload).toEqual({
+          path: "C:/exports/alpha.mp3",
+          strategy: "rename",
+        });
+        return "C:/exports/alpha (1).mp3";
+      }
+      if (command === "read_text_file") {
+        return "hello from file";
+      }
+      if (command === "tts_convert") {
+        return new Uint8Array([1, 2, 3]).buffer;
+      }
+      if (command === "write_binary_file") {
+        return undefined;
+      }
+      throw new Error(`Unexpected command: ${command}`);
+    });
+
+    const { useBatchStore } = await import("./batch");
+    const store = useBatchStore();
+    store.addFiles(["C:/docs/alpha.txt"]);
+    await store.convertAll();
+
+    expect(invokeMock).toHaveBeenCalledWith("write_binary_file", {
+      path: "C:/exports/alpha (1).mp3",
+      data: "AQID",
+    });
+    expect(store.files[0]).toMatchObject({
+      status: "done",
+      outputPath: "C:/exports/alpha (1).mp3",
+    });
+  });
+
   test("writes a temporary mp3 through backend commands before converting non-mp3 output", async () => {
     const settingsStore = useSettingsStore();
     settingsStore.updateOutputFormat("wav");
 
-    invokeMock.mockImplementation(async (command: string) => {
+    invokeMock.mockImplementation(async (command: string, payload?: unknown) => {
+      if (command === "resolve_output_path") {
+        return resolveOutputPath(payload);
+      }
       if (command === "read_text_file") {
         return "hello from file";
       }
@@ -124,9 +194,9 @@ describe("useBatchStore", () => {
         return new Uint8Array([1, 2, 3]).buffer;
       }
       if (
-        command === "write_binary_file"
-        || command === "convert_audio_format"
-        || command === "remove_file"
+        command === "write_binary_file" ||
+        command === "convert_audio_format" ||
+        command === "remove_file"
       ) {
         return undefined;
       }
@@ -164,6 +234,9 @@ describe("useBatchStore", () => {
     settingsStore.updateFileConcurrency(1);
 
     invokeMock.mockImplementation(async (command: string, payload?: unknown) => {
+      if (command === "resolve_output_path") {
+        return resolveOutputPath(payload);
+      }
       if (command === "read_text_file") {
         return "hello from file";
       }
@@ -172,6 +245,7 @@ describe("useBatchStore", () => {
         settingsStore.updateOutputFormat("wav");
         settingsStore.updateSavePath("D:/changed");
         settingsStore.updateMaxRetries(2);
+        settingsStore.updateConflictStrategy("skip");
         return new Uint8Array([1, 2, 3]).buffer;
       }
 
@@ -195,12 +269,14 @@ describe("useBatchStore", () => {
     expect(invokeMock).toHaveBeenCalledWith("tts_convert", {
       params: expect.objectContaining({
         max_retries: 6,
+        chunk_concurrency: 3,
       }),
     });
-    expect(invokeMock).not.toHaveBeenCalledWith(
-      "convert_audio_format",
-      expect.anything(),
-    );
+    expect(invokeMock).toHaveBeenCalledWith("resolve_output_path", {
+      path: "C:/exports/alpha.mp3",
+      strategy: "rename",
+    });
+    expect(invokeMock).not.toHaveBeenCalledWith("convert_audio_format", expect.anything());
 
     const writeCalls = invokeMock.mock.calls.filter(
       ([command]) => command === "write_binary_file",
@@ -217,7 +293,10 @@ describe("useBatchStore", () => {
   });
 
   test("reports a backend write failure on the batch item", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+    invokeMock.mockImplementation(async (command: string, payload?: unknown) => {
+      if (command === "resolve_output_path") {
+        return resolveOutputPath(payload);
+      }
       if (command === "read_text_file") {
         return "hello from file";
       }
@@ -248,7 +327,10 @@ describe("useBatchStore", () => {
     const settingsStore = useSettingsStore();
     settingsStore.updateOutputFormat("wav");
 
-    invokeMock.mockImplementation(async (command: string) => {
+    invokeMock.mockImplementation(async (command: string, payload?: unknown) => {
+      if (command === "resolve_output_path") {
+        return resolveOutputPath(payload);
+      }
       if (command === "read_text_file") {
         return "hello from file";
       }
@@ -276,6 +358,46 @@ describe("useBatchStore", () => {
     expect(store.files[0].status).toBe("error");
     expect(store.files[0].error).toContain("convert failed");
     expect(store.files[0].error).toContain("cleanup failed");
+  });
+
+  test("stops running conversions and returns unfinished files to pending", async () => {
+    const settingsStore = useSettingsStore();
+    settingsStore.updateFileConcurrency(1);
+
+    let rejectConvert: ((error: Error) => void) | undefined;
+    invokeMock.mockImplementation((command: string, payload?: unknown) => {
+      if (command === "resolve_output_path") {
+        return Promise.resolve(resolveOutputPath(payload));
+      }
+      if (command === "read_text_file") {
+        return Promise.resolve("hello");
+      }
+      if (command === "tts_convert") {
+        return new Promise((_, reject) => {
+          rejectConvert = reject;
+        });
+      }
+      return Promise.resolve(undefined);
+    });
+
+    const { useBatchStore } = await import("./batch");
+    const store = useBatchStore();
+    store.addFiles(["C:/docs/alpha.txt", "C:/docs/beta.txt"]);
+
+    const running = store.convertAll();
+    await flushPromises();
+
+    expect(store.converting).toBe(true);
+    store.stopAll();
+    rejectConvert?.(new Error("Cancelled"));
+    await running;
+
+    expect(invokeMock).toHaveBeenCalledWith("tts_stop", {
+      taskId: "00000000-0000-0000-0000-000000000001",
+    });
+    expect(store.converting).toBe(false);
+    expect(store.stopRequested).toBe(false);
+    expect(store.files.map((file) => file.status)).toEqual(["pending", "pending"]);
   });
 
   test("resets an errored file back to pending when retried", async () => {

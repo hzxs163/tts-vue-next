@@ -9,6 +9,14 @@ const text = computed({
   set: (value: string) => ttsStore.setText(value),
 });
 const hasText = computed(() => ttsStore.text.length > 0);
+
+function clearText() {
+  if (ttsStore.converting) {
+    return;
+  }
+
+  ttsStore.clear();
+}
 </script>
 
 <template>
@@ -19,9 +27,7 @@ const hasText = computed(() => ttsStore.text.length > 0);
           <v-icon>mdi-text-box-outline</v-icon>
         </v-avatar>
       </template>
-      <v-card-title class="text-h6">{{
-        $t("tts.textInput.title")
-      }}</v-card-title>
+      <v-card-title class="text-h6">{{ $t("tts.textInput.title") }}</v-card-title>
     </v-card-item>
     <v-card-text class="text-panel__body">
       <v-textarea
@@ -32,7 +38,8 @@ const hasText = computed(() => ttsStore.text.length > 0);
         no-resize
         hide-details
         rows="18"
-        class="text-panel__field" />
+        class="text-panel__field"
+      />
 
       <v-fade-transition>
         <v-icon
@@ -41,9 +48,10 @@ const hasText = computed(() => ttsStore.text.length > 0);
           size="small"
           class="text-panel__clear-btn"
           role="button"
-          aria-label="Clear text input"
+          :aria-label="$t('tts.textInput.clear')"
           :disabled="ttsStore.converting"
-          @click="ttsStore.clear()" />
+          @click="clearText"
+        />
       </v-fade-transition>
     </v-card-text>
   </v-card>
@@ -54,11 +62,7 @@ const hasText = computed(() => ttsStore.text.length > 0);
   height: 100%;
   border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
   background:
-    radial-gradient(
-      circle at top right,
-      rgba(var(--v-theme-primary), 0.1),
-      transparent 30%
-    ),
+    radial-gradient(circle at top right, rgba(var(--v-theme-primary), 0.1), transparent 30%),
     rgba(var(--v-theme-surface), 0.78);
   backdrop-filter: blur(18px);
   box-shadow: 0 18px 60px rgba(var(--v-theme-on-surface), 0.08);

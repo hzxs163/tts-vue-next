@@ -28,9 +28,32 @@ function resolveTargetTriple() {
   return targetTriple;
 }
 
+function resolveRequestedTarget(hostTriple) {
+  const targetFlagIndex = process.argv.indexOf("--target");
+  if (targetFlagIndex === -1) {
+    return hostTriple;
+  }
+
+  const requested = process.argv[targetFlagIndex + 1];
+  if (!requested) {
+    throw new Error("--target requires a Rust target triple");
+  }
+
+  return requested;
+}
+
 function syncFFmpegSidecar() {
+  const hostTriple = resolveTargetTriple();
+  const targetTriple = resolveRequestedTarget(hostTriple);
+  if (targetTriple !== hostTriple) {
+    throw new Error(
+      `Cannot produce the FFmpeg sidecar for ${targetTriple} on a ${hostTriple} host.\n` +
+        "Build on the matching platform, or place a prebuilt " +
+        `ffmpeg-${targetTriple} binary in src-tauri/binaries manually.`,
+    );
+  }
+
   const sourcePath = ffmpegInstaller.path;
-  const targetTriple = resolveTargetTriple();
   const extension = process.platform === "win32" ? ".exe" : "";
   const targetDir = path.join(repoRoot, "src-tauri", "binaries");
   const targetPath = path.join(targetDir, `ffmpeg-${targetTriple}${extension}`);

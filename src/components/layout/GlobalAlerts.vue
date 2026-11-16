@@ -32,7 +32,13 @@ watch(
     if (!error) {
       return;
     }
-    notify(ttsStore.errorKind ?? classifyTtsError(error), error);
+
+    const kind = ttsStore.errorKind ?? classifyTtsError(error);
+    if (kind === "cancelled") {
+      return;
+    }
+
+    notify(kind, error);
   },
 );
 
@@ -53,13 +59,10 @@ watch(
 
 onMounted(async () => {
   try {
-    unlistenProgress = await listen<TtsProgressEvent>(
-      "tts://progress",
-      ({ payload }) => {
-        ttsStore.applyProgress(payload);
-        batchStore.applyProgress(payload);
-      },
-    );
+    unlistenProgress = await listen<TtsProgressEvent>("tts://progress", ({ payload }) => {
+      ttsStore.applyProgress(payload);
+      batchStore.applyProgress(payload);
+    });
   } catch {
     // Progress events are best-effort; conversion still works without them.
   }

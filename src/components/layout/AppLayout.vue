@@ -3,11 +3,7 @@ import { computed, onMounted, ref } from "vue";
 import { useRoute } from "vue-router";
 import { useI18n } from "vue-i18n";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import {
-  APP_VERSION,
-  GITHUB_REPO_URL,
-  GITHUB_LATEST_RELEASE_API,
-} from "../../constants/project";
+import { APP_VERSION, GITHUB_REPO_URL, GITHUB_LATEST_RELEASE_API } from "../../constants/project";
 
 const route = useRoute();
 const { t } = useI18n();
@@ -101,11 +97,7 @@ onMounted(() => {
 
 <template>
   <div class="app-shell">
-    <v-navigation-drawer
-      permanent
-      width="150"
-      class="app-sidebar glass-panel"
-      elevation="0">
+    <v-navigation-drawer permanent width="150" class="app-sidebar glass-panel" elevation="0">
       <v-list nav density="comfortable" class="app-sidebar__nav">
         <v-list-item
           v-for="item in navItems"
@@ -114,18 +106,21 @@ onMounted(() => {
           :active="route.path === item.to"
           :exact="item.to === '/'"
           :title="item.title"
-          :prepend-icon="item.icon" />
+          :prepend-icon="item.icon"
+        />
       </v-list>
       <div
         class="app-sidebar__footer"
         :class="{ 'app-sidebar__footer--update': hasUpdate }"
         data-testid="sidebar-version"
-        @click="openReleasePage">
+        @click="openReleasePage"
+      >
         <v-icon
           v-if="hasUpdate"
           size="14"
           class="app-sidebar__version-icon"
-          data-testid="sidebar-version-update-icon">
+          data-testid="sidebar-version-update-icon"
+        >
           mdi-arrow-up-bold-box-outline
         </v-icon>
         <span>{{ versionLabel }}</span>

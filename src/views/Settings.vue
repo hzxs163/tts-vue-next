@@ -3,6 +3,7 @@ import { computed } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { useI18n } from "vue-i18n";
 import { useMessage } from "vuetify-message-vue3";
+import type { ConflictStrategy } from "../types";
 import { useSettingsStore } from "../stores/settings";
 
 const settingsStore = useSettingsStore();
@@ -19,6 +20,12 @@ const formatOptions = computed(() => [
 const languageOptions = computed(() => [
   { title: t("settings.languages.zh"), value: "zh-CN" },
   { title: t("settings.languages.en"), value: "en-US" },
+]);
+
+const conflictOptions = computed((): Array<{ title: string; value: ConflictStrategy }> => [
+  { title: t("settings.conflictStrategies.rename"), value: "rename" },
+  { title: t("settings.conflictStrategies.skip"), value: "skip" },
+  { title: t("settings.conflictStrategies.overwrite"), value: "overwrite" },
 ]);
 
 const retryOptions = Array.from({ length: 10 }, (_, index) => ({
@@ -75,7 +82,8 @@ async function selectSavePath() {
                     density="comfortable"
                     readonly
                     append-inner-icon="mdi-folder-outline"
-                    @click="selectSavePath" />
+                    @click="selectSavePath"
+                  />
                 </div>
 
                 <v-select
@@ -83,14 +91,24 @@ async function selectSavePath() {
                   :items="formatOptions"
                   density="comfortable"
                   :label="$t('settings.fields.defaultFormat')"
-                  @update:model-value="settingsStore.updateOutputFormat" />
+                  @update:model-value="settingsStore.updateOutputFormat"
+                />
 
                 <v-select
                   :model-value="settingsStore.language"
                   :items="languageOptions"
                   density="comfortable"
                   :label="$t('settings.fields.displayLanguage')"
-                  @update:model-value="settingsStore.updateLanguage" />
+                  @update:model-value="settingsStore.updateLanguage"
+                />
+
+                <v-select
+                  :model-value="settingsStore.conflictStrategy"
+                  :items="conflictOptions"
+                  density="comfortable"
+                  :label="$t('settings.fields.conflictStrategy')"
+                  @update:model-value="settingsStore.updateConflictStrategy"
+                />
 
                 <div class="settings-field settings-field--full">
                   <v-switch
@@ -99,9 +117,8 @@ async function selectSavePath() {
                     density="comfortable"
                     color="primary"
                     hide-details
-                    @update:model-value="
-                      (value) => settingsStore.updateAutoplay(Boolean(value))
-                    " />
+                    @update:model-value="(value) => settingsStore.updateAutoplay(Boolean(value))"
+                  />
                 </div>
               </div>
             </section>
@@ -120,21 +137,24 @@ async function selectSavePath() {
                   :items="retryOptions"
                   density="comfortable"
                   :label="$t('settings.fields.maxRetries')"
-                  @update:model-value="settingsStore.updateMaxRetries" />
+                  @update:model-value="settingsStore.updateMaxRetries"
+                />
 
                 <v-select
                   :model-value="settingsStore.fileConcurrency"
                   :items="concurrencyOptions"
                   density="comfortable"
                   :label="$t('settings.fields.fileConcurrency')"
-                  @update:model-value="settingsStore.updateFileConcurrency" />
+                  @update:model-value="settingsStore.updateFileConcurrency"
+                />
 
                 <v-select
                   :model-value="settingsStore.chunkConcurrency"
                   :items="concurrencyOptions"
                   density="comfortable"
                   :label="$t('settings.fields.chunkConcurrency')"
-                  @update:model-value="settingsStore.updateChunkConcurrency" />
+                  @update:model-value="settingsStore.updateChunkConcurrency"
+                />
               </div>
             </section>
           </div>
@@ -151,16 +171,8 @@ async function selectSavePath() {
   min-height: 0;
   box-sizing: border-box;
   background:
-    radial-gradient(
-      circle at top right,
-      rgba(var(--v-theme-primary), 0.08),
-      transparent 22%
-    ),
-    linear-gradient(
-      180deg,
-      rgba(var(--v-theme-surface), 1),
-      rgba(var(--v-theme-surface), 0.98)
-    );
+    radial-gradient(circle at top right, rgba(var(--v-theme-primary), 0.08), transparent 22%),
+    linear-gradient(180deg, rgba(var(--v-theme-surface), 1), rgba(var(--v-theme-surface), 0.98));
 }
 
 .settings-workspace {
@@ -172,11 +184,7 @@ async function selectSavePath() {
   height: 100%;
   border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
   background:
-    radial-gradient(
-      circle at top right,
-      rgba(var(--v-theme-primary), 0.1),
-      transparent 30%
-    ),
+    radial-gradient(circle at top right, rgba(var(--v-theme-primary), 0.1), transparent 30%),
     rgba(var(--v-theme-surface), 0.78);
   backdrop-filter: blur(18px);
   box-shadow: 0 18px 60px rgba(var(--v-theme-on-surface), 0.08);

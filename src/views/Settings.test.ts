@@ -134,7 +134,7 @@ describe("Settings view", () => {
     expect(invokeMock).toHaveBeenCalledWith("select_folder");
   });
 
-  test("renders processing controls including chunk concurrency and updates save path", async () => {
+  test("renders processing controls and updates save path", async () => {
     const wrapper = await mountSettings();
 
     expect(wrapper.text()).toContain("Output");
@@ -145,6 +145,7 @@ describe("Settings view", () => {
     expect(wrapper.text()).toContain("Max Retries");
     expect(wrapper.text()).toContain("File Concurrency");
     expect(wrapper.text()).toContain("Chunk Concurrency");
+    expect(wrapper.text()).toContain("Existing Files");
 
     const settingsStore = useSettingsStore();
     const chunkConcurrencySelect = wrapper

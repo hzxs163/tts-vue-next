@@ -1,11 +1,11 @@
+pub mod communicate;
 pub mod config;
 pub mod constants;
-pub mod types;
-pub mod errors;
 pub mod drm;
-pub mod ssml;
+pub mod errors;
 pub mod split_text;
-pub mod communicate;
+pub mod ssml;
+pub mod types;
 pub mod voices;
 
 pub use communicate::Communicate;

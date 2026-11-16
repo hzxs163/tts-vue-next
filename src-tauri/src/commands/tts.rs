@@ -5,13 +5,13 @@ use std::sync::{Arc, LazyLock};
 use tauri::{command, AppHandle, Emitter};
 use tokio::sync::{watch, Mutex};
 
-use crate::edge_tts::Communicate;
+use crate::commands::error::CommandError;
 use crate::edge_tts::constants::DEFAULT_OUTPUT_FORMAT;
 use crate::edge_tts::errors::EdgeTTSError;
 use crate::edge_tts::types::TTSConfig;
-use crate::utils::retry::retry_with_backoff;
+use crate::edge_tts::Communicate;
+use crate::utils::retry::{retry_with_backoff, RetryOutcome};
 
-const DUPLICATE_TASK_ERROR: &str = "Task already exists";
 const PROGRESS_EVENT: &str = "tts://progress";
 
 #[derive(Clone, serde::Serialize)]
@@ -22,7 +22,9 @@ pub struct TtsProgressEvent {
     pub total: usize,
 }
 
-static ACTIVE_TASKS: LazyLock<Arc<Mutex<HashMap<String, watch::Sender<bool>>>>> =
+type ActiveTaskMap = Arc<Mutex<HashMap<String, watch::Sender<bool>>>>;
+
+static ACTIVE_TASKS: LazyLock<ActiveTaskMap> =
     LazyLock::new(|| Arc::new(Mutex::new(HashMap::new())));
 
 #[derive(serde::Deserialize)]
@@ -37,6 +39,9 @@ pub struct TtsConvertParams {
     pub task_id: String,
     #[serde(default = "default_retries")]
     pub max_retries: u32,
+    /// Number of text chunks synthesized in parallel; clamped in `Communicate`.
+    #[serde(default = "default_chunk_concurrency")]
+    pub chunk_concurrency: usize,
 }
 
 fn default_format() -> String {
@@ -47,11 +52,15 @@ fn default_retries() -> u32 {
     3
 }
 
+fn default_chunk_concurrency() -> usize {
+    1
+}
+
 #[command]
 pub async fn tts_convert(
     app: AppHandle,
     params: TtsConvertParams,
-) -> Result<tauri::ipc::Response, String> {
+) -> Result<tauri::ipc::Response, CommandError> {
     let task_id = params.task_id.clone();
     let on_progress = move |completed: usize, total: usize| {
         let _ = app.emit(
@@ -70,16 +79,19 @@ pub async fn tts_convert(
     Ok(tauri::ipc::Response::new(audio))
 }
 
-async fn synthesize<F>(params: TtsConvertParams, on_progress: F) -> Result<Vec<u8>, String>
+async fn synthesize<F>(params: TtsConvertParams, on_progress: F) -> Result<Vec<u8>, EdgeTTSError>
 where
     F: Fn(usize, usize) + Send + Sync + Clone + 'static,
 {
+    let chunk_concurrency = params.chunk_concurrency;
     run_tts_convert(params, 1000, move |text, config, cancel_rx| {
         let on_progress = on_progress.clone();
         async move {
-            let communicate =
-                Communicate::new(text, config, cancel_rx).with_progress(on_progress);
-            communicate.stream_audio().await
+            Communicate::new(text, config, cancel_rx)
+                .with_chunk_concurrency(chunk_concurrency)
+                .with_progress(on_progress)
+                .stream_audio()
+                .await
         }
     })
     .await
@@ -89,9 +101,9 @@ async fn run_tts_convert<R, Fut>(
     params: TtsConvertParams,
     base_delay_ms: u64,
     run_stream: R,
-) -> Result<Vec<u8>, String>
+) -> Result<Vec<u8>, EdgeTTSError>
 where
-    R: Fn(String, TTSConfig, watch::Receiver<bool>) -> Fut,
+    R: Fn(String, TTSConfig, watch::Receiver<bool>) -> Fut + Clone,
     Fut: Future<Output = Result<Vec<u8>, EdgeTTSError>>,
 {
     let (cancel_tx, cancel_rx) = watch::channel(false);
@@ -100,7 +112,7 @@ where
     {
         let mut tasks = ACTIVE_TASKS.lock().await;
         if tasks.contains_key(&task_id) {
-            return Err(format!("{DUPLICATE_TASK_ERROR}: {task_id}"));
+            return Err(EdgeTTSError::TaskAlreadyExists(task_id));
         }
         tasks.insert(task_id.clone(), cancel_tx);
     }
@@ -114,35 +126,40 @@ where
     };
 
     let text = params.text;
-    let result = retry_with_backoff(params.max_retries, base_delay_ms, || {
-        let text = text.clone();
-        let config = config.clone();
-        let cancel_rx = cancel_rx.clone();
-        async {
-            match run_stream(text, config, cancel_rx).await {
-                Err(EdgeTTSError::Cancelled) => Ok(Err(EdgeTTSError::Cancelled)),
-                Ok(audio) => Ok(Ok(audio)),
-                Err(error) => Err(error),
-            }
-        }
-    })
+    let retry_cancel = cancel_rx.clone();
+    let result = retry_with_backoff(
+        params.max_retries,
+        base_delay_ms,
+        retry_cancel,
+        |error: &EdgeTTSError| error.retryable(),
+        || {
+            let text = text.clone();
+            let config = config.clone();
+            let cancel_rx = cancel_rx.clone();
+            let run_stream = run_stream.clone();
+            async move { run_stream(text, config, cancel_rx).await }
+        },
+    )
     .await;
 
     ACTIVE_TASKS.lock().await.remove(&task_id);
 
     match result {
-        Ok(Ok(audio)) => Ok(audio),
-        Ok(Err(error)) | Err(error) => Err(error.to_string()),
+        Ok(audio) => Ok(audio),
+        Err(RetryOutcome::Failed(error)) => Err(error),
+        Err(RetryOutcome::Cancelled) => Err(EdgeTTSError::Cancelled),
     }
 }
 
 #[command]
-pub async fn tts_stop(task_id: String) -> Result<(), String> {
+pub async fn tts_stop(task_id: String) -> Result<(), CommandError> {
     let tasks = ACTIVE_TASKS.lock().await;
     if let Some(cancel_tx) = tasks.get(&task_id) {
-        cancel_tx.send(true).map_err(|error| error.to_string())
+        cancel_tx
+            .send(true)
+            .map_err(|error| CommandError::new("unknown", error.to_string(), false))
     } else {
-        Err(format!("Task {task_id} not found"))
+        Err(CommandError::from(EdgeTTSError::TaskNotFound(task_id)))
     }
 }
 
@@ -168,6 +185,7 @@ mod tests {
             format: "audio-test-format".to_string(),
             task_id: "task-1".to_string(),
             max_retries: 1,
+            chunk_concurrency: 1,
         };
 
         let result = run_tts_convert(params, 0, {
@@ -213,6 +231,7 @@ mod tests {
             format: "audio-test-format".to_string(),
             task_id: "task-error".to_string(),
             max_retries: 1,
+            chunk_concurrency: 1,
         };
 
         let error = run_tts_convert(params, 0, |_, _, _| async {
@@ -221,7 +240,7 @@ mod tests {
         .await
         .unwrap_err();
 
-        assert!(error.contains("always fails"));
+        assert!(error.to_string().contains("always fails"));
         assert!(ACTIVE_TASKS.lock().await.is_empty());
     }
 
@@ -239,6 +258,7 @@ mod tests {
             format: "audio-test-format".to_string(),
             task_id: "task-cancelled".to_string(),
             max_retries: 3,
+            chunk_concurrency: 1,
         };
 
         let error = run_tts_convert(params, 0, {
@@ -254,7 +274,43 @@ mod tests {
         .await
         .unwrap_err();
 
-        assert_eq!(error, EdgeTTSError::Cancelled.to_string());
+        assert!(matches!(error, EdgeTTSError::Cancelled));
+        assert_eq!(attempts.load(Ordering::SeqCst), 1);
+        assert!(ACTIVE_TASKS.lock().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_run_tts_convert_does_not_retry_auth_errors() {
+        let _guard = TEST_MUTEX.lock().await;
+        clear_active_tasks().await;
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let params = TtsConvertParams {
+            text: "hello".to_string(),
+            voice: "en-US-TestNeural".to_string(),
+            rate: "+0%".to_string(),
+            pitch: "+0Hz".to_string(),
+            volume: "+0%".to_string(),
+            format: "audio-test-format".to_string(),
+            task_id: "task-forbidden".to_string(),
+            max_retries: 5,
+            chunk_concurrency: 1,
+        };
+
+        let error = run_tts_convert(params, 0, {
+            let attempts = Arc::clone(&attempts);
+            move |_, _, _| {
+                let attempts = Arc::clone(&attempts);
+                async move {
+                    attempts.fetch_add(1, Ordering::SeqCst);
+                    Err(EdgeTTSError::HttpError(403))
+                }
+            }
+        })
+        .await
+        .unwrap_err();
+
+        assert_eq!(error.code(), "auth");
+        assert!(error.to_string().contains("403"));
         assert_eq!(attempts.load(Ordering::SeqCst), 1);
         assert!(ACTIVE_TASKS.lock().await.is_empty());
     }
@@ -277,13 +333,14 @@ mod tests {
             format: "audio-test-format".to_string(),
             task_id: "task-duplicate".to_string(),
             max_retries: 1,
+            chunk_concurrency: 1,
         };
 
         let error = run_tts_convert(params, 0, |_, _, _| async { Ok(vec![1]) })
             .await
             .unwrap_err();
 
-        assert!(error.contains("already exists"));
+        assert!(matches!(error, EdgeTTSError::TaskAlreadyExists(_)));
         assert!(ACTIVE_TASKS.lock().await.contains_key("task-duplicate"));
         clear_active_tasks().await;
     }
@@ -300,7 +357,7 @@ mod tests {
 
         tts_stop("task-1".to_string()).await.unwrap();
 
-        tokio::time::timeout(Duration::from_millis(50), cancel_rx.changed())
+        tokio::time::timeout(Duration::from_secs(1), cancel_rx.changed())
             .await
             .unwrap()
             .unwrap();
@@ -315,7 +372,8 @@ mod tests {
 
         let error = tts_stop("missing-task".to_string()).await.unwrap_err();
 
-        assert!(error.contains("not found"));
+        assert_eq!(error.code, "unknown");
+        assert!(error.message.contains("not found"));
     }
 
     /// Live probe: `cargo test --lib live_ -- --ignored --nocapture`
@@ -334,6 +392,7 @@ mod tests {
             format: "audio-24khz-48kbitrate-mono-mp3".to_string(),
             task_id: format!("live-probe-{}", Uuid::new_v4()),
             max_retries: 1,
+            chunk_concurrency: 1,
         };
 
         let audio = synthesize(params, |_: usize, _: usize| {})

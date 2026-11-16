@@ -39,6 +39,7 @@ describe("useSettingsStore", () => {
     expect(store.maxRetries).toBe(3);
     expect(store.fileConcurrency).toBe(3);
     expect(store.chunkConcurrency).toBe(3);
+    expect(store.conflictStrategy).toBe("rename");
     expect(store.autoplay).toBe(true);
     expect(store.language).toBe("zh-CN");
     expect(store.themeMode).toBe("system");
@@ -53,6 +54,7 @@ describe("useSettingsStore", () => {
     store.updateMaxRetries(99);
     store.updateFileConcurrency(0);
     store.updateChunkConcurrency(9);
+    store.updateConflictStrategy("skip");
     store.updateThemeMode("dark");
 
     expect(store.savePath).toBe("/tmp/output");
@@ -60,6 +62,7 @@ describe("useSettingsStore", () => {
     expect(store.maxRetries).toBe(10);
     expect(store.fileConcurrency).toBe(1);
     expect(store.chunkConcurrency).toBe(5);
+    expect(store.conflictStrategy).toBe("skip");
     expect(store.themeMode).toBe("dark");
   });
 
@@ -71,6 +74,7 @@ describe("useSettingsStore", () => {
     store.updateOutputFormat("flac");
     store.updateMaxRetries(7);
     store.updateChunkConcurrency(4);
+    store.updateConflictStrategy("overwrite");
     store.updateThemeMode("dark");
 
     const nextPinia = createPinia();
@@ -84,6 +88,7 @@ describe("useSettingsStore", () => {
     expect(rehydratedStore.outputFormat).toBe("flac");
     expect(rehydratedStore.maxRetries).toBe(7);
     expect(rehydratedStore.chunkConcurrency).toBe(4);
+    expect(rehydratedStore.conflictStrategy).toBe("overwrite");
     expect(rehydratedStore.themeMode).toBe("dark");
   });
 

@@ -1,10 +1,17 @@
 import i18n from "../plugins/i18n";
 import { defineStore } from "pinia";
 import { invoke } from "@tauri-apps/api/core";
-import type { BatchFile, OutputFormat, TtsParams, TtsProgressEvent } from "../types";
+import type {
+  BatchFile,
+  ConflictStrategy,
+  OutputFormat,
+  TtsParams,
+  TtsProgressEvent,
+} from "../types";
 import { useSettingsStore } from "./settings";
 import { useVoicesStore } from "./voices";
-import { bytesToBase64 } from "../utils/bytes";
+import { saveAudioBytes } from "../utils/saveAudio";
+import { toErrorMessage } from "../utils/ttsErrors";
 
 const EDGE_TTS_OUTPUT_FORMAT = "audio-24khz-48kbitrate-mono-mp3";
 const DEFAULT_RATE = "+0%";
@@ -14,6 +21,7 @@ const DEFAULT_VOLUME = "+0%";
 interface BatchState {
   files: BatchFile[];
   converting: boolean;
+  stopRequested: boolean;
 }
 
 interface BatchExecutionSnapshot {
@@ -21,6 +29,8 @@ interface BatchExecutionSnapshot {
   outputFormat: OutputFormat;
   maxRetries: number;
   fileConcurrency: number;
+  chunkConcurrency: number;
+  conflictStrategy: ConflictStrategy;
   selectedVoice: string;
 }
 
@@ -52,7 +62,9 @@ function resolveOutputDirectory(filePath: string, configuredDirectory: string): 
     return "";
   }
 
-  return filePath.slice(0, filePath.length - segments[segments.length - 1].length).replace(/[\\/]+$/, "");
+  return filePath
+    .slice(0, filePath.length - segments[segments.length - 1].length)
+    .replace(/[\\/]+$/, "");
 }
 
 function toOutputPath(file: BatchFile, outputFormat: OutputFormat, savePath: string): string {
@@ -61,34 +73,15 @@ function toOutputPath(file: BatchFile, outputFormat: OutputFormat, savePath: str
   return joinPath(outputDirectory, outputName);
 }
 
-function toErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 function updateFile(files: BatchFile[], id: string, patch: Partial<BatchFile>): BatchFile[] {
   return files.map((file) => (file.id === id ? { ...file, ...patch } : file));
-}
-
-async function removeTempFile(path: string | null): Promise<string | null> {
-  if (!path) {
-    return null;
-  }
-
-  try {
-    await invoke("remove_file", { path });
-    return null;
-  } catch (error) {
-    return i18n.global.t("batch.errors.failedToRemoveTempFile", {
-      path,
-      message: toErrorMessage(error),
-    });
-  }
 }
 
 export const useBatchStore = defineStore("batch", {
   state: (): BatchState => ({
     files: [],
     converting: false,
+    stopRequested: false,
   }),
 
   actions: {
@@ -158,6 +151,26 @@ export const useBatchStore = defineStore("batch", {
       });
     },
 
+    /**
+     * Cancels every running conversion and stops the worker pool from picking up
+     * queued files. Cancelled files return to `pending` so they can be resumed.
+     */
+    stopAll() {
+      if (!this.converting) {
+        return;
+      }
+
+      this.$patch({ stopRequested: true });
+
+      for (const file of this.files) {
+        if (file.status !== "processing") {
+          continue;
+        }
+
+        void invoke("tts_stop", { taskId: file.id }).catch(() => undefined);
+      }
+    },
+
     async convertAll() {
       if (this.converting) {
         return;
@@ -178,12 +191,14 @@ export const useBatchStore = defineStore("batch", {
         outputFormat: settingsStore.outputFormat,
         maxRetries: settingsStore.maxRetries,
         fileConcurrency: settingsStore.fileConcurrency,
+        chunkConcurrency: settingsStore.chunkConcurrency,
+        conflictStrategy: settingsStore.conflictStrategy,
         selectedVoice: voicesStore.selectedVoice,
       };
       const workerCount = Math.min(snapshot.fileConcurrency, fileIds.length);
       let nextIndex = 0;
 
-      this.$patch({ converting: true });
+      this.$patch({ converting: true, stopRequested: false });
 
       const processFile = async (fileId: string) => {
         const file = this.files.find((item) => item.id === fileId);
@@ -191,7 +206,7 @@ export const useBatchStore = defineStore("batch", {
           return;
         }
 
-        const outputPath = toOutputPath(file, snapshot.outputFormat, snapshot.savePath);
+        const requestedOutputPath = toOutputPath(file, snapshot.outputFormat, snapshot.savePath);
         const params: TtsParams = {
           text: "",
           voice: snapshot.selectedVoice,
@@ -201,9 +216,8 @@ export const useBatchStore = defineStore("batch", {
           format: EDGE_TTS_OUTPUT_FORMAT,
           task_id: file.id,
           max_retries: snapshot.maxRetries,
+          chunk_concurrency: snapshot.chunkConcurrency,
         };
-        let tempPath: string | null = null;
-
         this.$patch((state) => {
           state.files = updateFile(state.files, file.id, {
             status: "processing",
@@ -212,8 +226,45 @@ export const useBatchStore = defineStore("batch", {
           });
         });
 
+        const markPending = () => {
+          this.$patch((state) => {
+            state.files = updateFile(state.files, file.id, {
+              status: "pending",
+              progress: 0,
+              error: undefined,
+            });
+          });
+        };
+
         try {
+          if (this.stopRequested) {
+            markPending();
+            return;
+          }
+
+          const resolvedOutputPath = await invoke<string | null>("resolve_output_path", {
+            path: requestedOutputPath,
+            strategy: snapshot.conflictStrategy,
+          });
+
+          if (resolvedOutputPath === null) {
+            this.$patch((state) => {
+              state.files = updateFile(state.files, file.id, {
+                status: "skipped",
+                progress: 100,
+                outputPath: undefined,
+                error: undefined,
+              });
+            });
+            return;
+          }
+
+          const outputPath = resolvedOutputPath;
           const text = await invoke<string>("read_text_file", { path: file.path });
+          if (this.stopRequested) {
+            markPending();
+            return;
+          }
           params.text = text;
 
           this.$patch((state) => {
@@ -221,58 +272,53 @@ export const useBatchStore = defineStore("batch", {
           });
 
           const audioBuffer = await invoke<ArrayBuffer>("tts_convert", { params });
-          const audioData = bytesToBase64(new Uint8Array(audioBuffer));
+          if (this.stopRequested) {
+            markPending();
+            return;
+          }
 
           this.$patch((state) => {
             state.files = updateFile(state.files, file.id, { progress: 80 });
           });
 
-          let cleanupError: string | null = null;
-          if (snapshot.outputFormat === "mp3") {
-            await invoke("write_binary_file", {
-              path: outputPath,
-              data: audioData,
-            });
-          } else {
-            tempPath = `${outputPath}.tmp.mp3`;
-            await invoke("write_binary_file", {
-              path: tempPath,
-              data: audioData,
-            });
-            await invoke("convert_audio_format", {
-              inputPath: tempPath,
-              outputPath,
-              format: snapshot.outputFormat,
-            });
-            cleanupError = await removeTempFile(tempPath);
-            tempPath = null;
-          }
+          const { cleanupError, cleanupPath } = await saveAudioBytes(
+            new Uint8Array(audioBuffer),
+            outputPath,
+            snapshot.outputFormat,
+          );
+          const cleanupWarning = cleanupError
+            ? i18n.global.t("batch.errors.failedToRemoveTempFile", {
+                path: cleanupPath ?? "",
+                message: cleanupError,
+              })
+            : null;
 
           this.$patch((state) => {
             state.files = updateFile(state.files, file.id, {
               status: "done",
               progress: 100,
               outputPath,
-              error: cleanupError ?? undefined,
+              error: cleanupWarning ?? undefined,
             });
           });
         } catch (error) {
-          const cleanupError = await removeTempFile(tempPath);
-          const errorMessage = cleanupError
-            ? `${toErrorMessage(error)}\n${cleanupError}`
-            : toErrorMessage(error);
+          if (this.stopRequested) {
+            markPending();
+            return;
+          }
+
           this.$patch((state) => {
             state.files = updateFile(state.files, file.id, {
               status: "error",
               progress: 0,
-              error: errorMessage,
+              error: toErrorMessage(error),
             });
           });
         }
       };
 
       const workers = Array.from({ length: workerCount }, async () => {
-        while (nextIndex < fileIds.length) {
+        while (nextIndex < fileIds.length && !this.stopRequested) {
           const currentId = fileIds[nextIndex];
           nextIndex += 1;
           await processFile(currentId);
@@ -282,7 +328,7 @@ export const useBatchStore = defineStore("batch", {
       try {
         await Promise.all(workers);
       } finally {
-        this.$patch({ converting: false });
+        this.$patch({ converting: false, stopRequested: false });
       }
     },
   },

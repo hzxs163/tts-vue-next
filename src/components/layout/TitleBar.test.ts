@@ -208,17 +208,13 @@ describe("TitleBar", () => {
     window.removeEventListener("unhandledrejection", captureUnhandledRejection);
 
     expect(unhandledRejections).toHaveLength(0);
-    expect(wrapper.get('[role="alert"]').text()).toBe(
-      "Window action failed. Please try again.",
-    );
+    expect(wrapper.get('[role="alert"]').text()).toBe("Window action failed. Please try again.");
   });
 
   test("exposes accessible labels on icon-only controls", async () => {
     const wrapper = await mountTitleBar();
 
-    const labels = wrapper
-      .findAll("button")
-      .map((button) => button.attributes("aria-label"));
+    const labels = wrapper.findAll("button").map((button) => button.attributes("aria-label"));
 
     expect(labels).toEqual([
       "Open GitHub repository",
@@ -236,8 +232,6 @@ describe("TitleBar", () => {
     await buttons[0].trigger("click");
     await flushPromises();
 
-    expect(openUrlMock).toHaveBeenCalledWith(
-      "https://github.com/LokerL/tts-vue-next",
-    );
+    expect(openUrlMock).toHaveBeenCalledWith("https://github.com/LokerL/tts-vue-next");
   });
 });

@@ -65,8 +65,7 @@ const buttonStub = defineComponent({
     },
   },
   emits: ["click"],
-  template:
-    '<button :disabled="disabled" @click="$emit(\'click\')"><slot /></button>',
+  template: '<button :disabled="disabled" @click="$emit(\'click\')"><slot /></button>',
 });
 
 const selectStub = defineComponent({
@@ -115,8 +114,7 @@ describe("TextToSpeech view", () => {
       error: null,
     });
 
-    const { default: TextToSpeech } =
-      await import("../../views/TextToSpeech.vue");
+    const { default: TextToSpeech } = await import("../../views/TextToSpeech.vue");
     const wrapper = mount(TextToSpeech, {
       global: {
         plugins: [pinia, i18n],
@@ -164,8 +162,7 @@ describe("TextToSpeech view", () => {
     const pinia = createPinia();
     setActivePinia(pinia);
 
-    const { default: TextToSpeech } =
-      await import("../../views/TextToSpeech.vue");
+    const { default: TextToSpeech } = await import("../../views/TextToSpeech.vue");
     const wrapper = mount(TextToSpeech, {
       global: {
         plugins: [pinia, i18n],
@@ -218,8 +215,7 @@ describe("TextToSpeech view", () => {
       progress: 42,
     });
 
-    const { default: TextToSpeech } =
-      await import("../../views/TextToSpeech.vue");
+    const { default: TextToSpeech } = await import("../../views/TextToSpeech.vue");
     const wrapper = mount(TextToSpeech, {
       global: {
         plugins: [pinia, i18n],

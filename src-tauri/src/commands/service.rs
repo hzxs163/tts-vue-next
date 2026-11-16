@@ -18,9 +18,7 @@ pub struct ServiceStatus {
 fn classify(error: &EdgeTTSError) -> &'static str {
     match error {
         EdgeTTSError::HttpError(403) => "auth",
-        EdgeTTSError::ConnectionError(message)
-            if message.to_lowercase().contains("timeout") =>
-        {
+        EdgeTTSError::ConnectionError(message) if message.to_lowercase().contains("timeout") => {
             "timeout"
         }
         _ => "network",

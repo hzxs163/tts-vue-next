@@ -6,6 +6,7 @@ export default defineConfig({
   test: {
     environment: "happy-dom",
     include: ["src/**/*.test.ts"],
+    setupFiles: ["./vitest.setup.ts"],
     // Unit tests deliberately mount Vuetify components as stubs / unresolved
     // custom elements, so Vue's resolution warnings are pure noise here.
     onConsoleLog(log, type) {
@@ -18,12 +19,7 @@ export default defineConfig({
       provider: "v8",
       reporter: ["text", "html"],
       include: ["src/**/*.{ts,vue}"],
-      exclude: [
-        "src/**/*.test.ts",
-        "src/**/*.d.ts",
-        "src/locales/**",
-        "src/types/**",
-      ],
+      exclude: ["src/**/*.test.ts", "src/**/*.d.ts", "src/locales/**", "src/types/**"],
     },
   },
 });

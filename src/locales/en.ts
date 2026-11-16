@@ -28,6 +28,7 @@ export default {
     textInput: {
       title: "Text Input",
       placeholder: "Enter text to convert to speech...",
+      clear: "Clear text input",
     },
     options: {
       title: "Voice Control Dock",
@@ -47,6 +48,7 @@ export default {
       saveGeneratedAudio: "Save generated audio",
       saveFilterName: "Audio",
       defaultFileName: "tts-output.{ext}",
+      saved: "Saved to {path}",
     },
   },
   batch: {
@@ -61,13 +63,13 @@ export default {
     },
     actions: {
       startAll: "Start All",
+      stopAll: "Stop All",
       clear: "Clear",
       concurrency: "Concurrency",
     },
     upload: {
       title: "Drop text files into the queue",
-      description:
-        "Click to browse, or drop `.txt`, `.md`, `.markdown`, and `.docx` files here.",
+      description: "Click to browse, or drop `.txt`, `.md`, `.markdown`, and `.docx` files here.",
       chooseFiles: "Choose Files",
       unsupportedFileTypes: "Unsupported file types: {files}",
       filePickerFilterName: "Text Files",
@@ -86,13 +88,13 @@ export default {
       status: {
         completed: "Completed",
         failed: "Failed",
+        skipped: "Skipped",
         processing: "Processing",
         queued: "Queued",
       },
     },
     errors: {
-      failedToRemoveTempFile:
-        "Failed to remove temporary file {path}: {message}",
+      failedToRemoveTempFile: "Failed to remove temporary file {path}: {message}",
     },
   },
   settings: {
@@ -116,6 +118,12 @@ export default {
       maxRetries: "Max Retries",
       fileConcurrency: "File Concurrency",
       chunkConcurrency: "Chunk Concurrency",
+      conflictStrategy: "Existing Files",
+    },
+    conflictStrategies: {
+      overwrite: "Overwrite existing files",
+      skip: "Skip existing files",
+      rename: "Rename automatically",
     },
     languages: {
       zh: "Simplified Chinese",
@@ -132,6 +140,7 @@ export default {
     timeout: "The speech service timed out. Please try again shortly.",
     cancelled: "Conversion cancelled.",
     unknown: "Conversion failed: {message}",
-    voiceCache: "Could not refresh the voice list. Using a local cached copy; some voices may be outdated.",
+    voiceCache:
+      "Could not refresh the voice list. Using a local cached copy; some voices may be outdated.",
   },
 } as const;

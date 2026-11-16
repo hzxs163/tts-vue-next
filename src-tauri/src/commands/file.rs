@@ -6,7 +6,11 @@ use pulldown_cmark::{Event, Parser, Tag, TagEnd};
 use tauri::command;
 use tauri_plugin_dialog::DialogExt;
 
+use crate::utils::fs::write_file_atomically;
+
 const ALLOWED_OUTPUT_EXTENSIONS: [&str; 4] = ["mp3", "wav", "ogg", "flac"];
+const CONFLICT_STRATEGIES: [&str; 3] = ["overwrite", "skip", "rename"];
+const MAX_CONFLICT_SUFFIX: u32 = 1000;
 
 #[command]
 pub async fn read_text_file(path: String) -> Result<String, String> {
@@ -43,7 +47,9 @@ pub async fn read_text_file(path: String) -> Result<String, String> {
 
 #[command]
 pub async fn select_folder(app: tauri::AppHandle) -> Result<Option<String>, String> {
-    Ok(map_selected_folder(app.dialog().file().blocking_pick_folder()))
+    Ok(map_selected_folder(
+        app.dialog().file().blocking_pick_folder(),
+    ))
 }
 
 #[command]
@@ -91,9 +97,53 @@ pub async fn write_binary_file(path: String, data: String) -> Result<(), String>
         .decode(data.as_bytes())
         .map_err(|error| format!("Invalid base64 audio data: {error}"))?;
 
-    tokio::fs::write(&path, bytes)
-        .await
-        .map_err(|error| format!("Failed to write file: {error}"))
+    write_file_atomically(Path::new(&path), &bytes).await
+}
+
+/// Decides what the batch queue should do when the target file already exists.
+///
+/// Returns `None` when the caller should skip the file entirely.
+#[command]
+pub async fn resolve_output_path(path: String, strategy: String) -> Result<Option<String>, String> {
+    validate_audio_output_path(&path)?;
+
+    if !CONFLICT_STRATEGIES.contains(&strategy.as_str()) {
+        return Err(format!("Unsupported conflict strategy: {strategy}"));
+    }
+
+    if !Path::new(&path).exists() {
+        return Ok(Some(path));
+    }
+
+    match strategy.as_str() {
+        "overwrite" => Ok(Some(path)),
+        "skip" => Ok(None),
+        _ => renamed_output_path(&path).map(Some),
+    }
+}
+
+fn renamed_output_path(path: &str) -> Result<String, String> {
+    let file_path = Path::new(path);
+    let parent = file_path
+        .parent()
+        .ok_or_else(|| "Output file must include a parent directory".to_string())?;
+    let stem = file_path
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .ok_or_else(|| "Output file name is invalid".to_string())?;
+    let extension = file_path
+        .extension()
+        .and_then(|value| value.to_str())
+        .ok_or_else(|| "Output file must have an audio extension".to_string())?;
+
+    for index in 1..=MAX_CONFLICT_SUFFIX {
+        let candidate = parent.join(format!("{stem} ({index}).{extension}"));
+        if !candidate.exists() {
+            return Ok(candidate.to_string_lossy().into_owned());
+        }
+    }
+
+    Err(format!("Too many files with the same name: {path}"))
 }
 
 #[command]
@@ -203,7 +253,8 @@ fn strip_markdown(markdown: &str) -> String {
 
 fn read_docx(path: &str) -> Result<String, String> {
     let data = std::fs::read(path).map_err(|error| format!("Failed to read docx: {error}"))?;
-    let document = docx_rs::read_docx(&data).map_err(|error| format!("Failed to parse docx: {error}"))?;
+    let document =
+        docx_rs::read_docx(&data).map_err(|error| format!("Failed to parse docx: {error}"))?;
 
     let mut paragraphs = Vec::new();
     for child in document.document.children {
@@ -244,7 +295,9 @@ mod tests {
         let path = unique_temp_path("txt");
         tokio::fs::write(&path, "plain text").await.unwrap();
 
-        let result = read_text_file(path.to_string_lossy().into_owned()).await.unwrap();
+        let result = read_text_file(path.to_string_lossy().into_owned())
+            .await
+            .unwrap();
 
         assert_eq!(result, "plain text");
         let _ = tokio::fs::remove_file(path).await;
@@ -257,7 +310,9 @@ mod tests {
             .await
             .unwrap();
 
-        let result = read_text_file(path.to_string_lossy().into_owned()).await.unwrap();
+        let result = read_text_file(path.to_string_lossy().into_owned())
+            .await
+            .unwrap();
 
         assert_eq!(result, "Hello world");
         let _ = tokio::fs::remove_file(path).await;
@@ -268,7 +323,9 @@ mod tests {
         let path = unique_temp_path("docx");
         create_docx_file(&path);
 
-        let result = read_text_file(path.to_string_lossy().into_owned()).await.unwrap();
+        let result = read_text_file(path.to_string_lossy().into_owned())
+            .await
+            .unwrap();
 
         assert!(result.contains("Hello"));
         assert!(result.contains("World"));
@@ -350,6 +407,83 @@ mod tests {
 
         assert_eq!(result, vec![1, 2, 3]);
         let _ = tokio::fs::remove_file(path).await;
+    }
+
+    #[tokio::test]
+    async fn test_resolve_output_path_returns_original_path_when_file_is_absent() {
+        let path = unique_temp_path("mp3");
+
+        let resolved =
+            resolve_output_path(path.to_string_lossy().into_owned(), "rename".to_string())
+                .await
+                .unwrap();
+
+        assert_eq!(resolved, Some(path.to_string_lossy().into_owned()));
+    }
+
+    #[tokio::test]
+    async fn test_resolve_output_path_skip_returns_none_for_existing_file() {
+        let path = unique_temp_path("mp3");
+        tokio::fs::write(&path, b"audio").await.unwrap();
+
+        let resolved = resolve_output_path(path.to_string_lossy().into_owned(), "skip".to_string())
+            .await
+            .unwrap();
+
+        assert_eq!(resolved, None);
+        let _ = tokio::fs::remove_file(path).await;
+    }
+
+    #[tokio::test]
+    async fn test_resolve_output_path_overwrite_keeps_existing_path() {
+        let path = unique_temp_path("mp3");
+        tokio::fs::write(&path, b"audio").await.unwrap();
+
+        let resolved =
+            resolve_output_path(path.to_string_lossy().into_owned(), "overwrite".to_string())
+                .await
+                .unwrap();
+
+        assert_eq!(resolved, Some(path.to_string_lossy().into_owned()));
+        let _ = tokio::fs::remove_file(path).await;
+    }
+
+    #[tokio::test]
+    async fn test_resolve_output_path_rename_uses_next_free_suffix() {
+        let path = unique_temp_path("mp3");
+        let parent = path.parent().unwrap().to_path_buf();
+        let stem = path.file_stem().unwrap().to_string_lossy().into_owned();
+        let first_suffix = parent.join(format!("{stem} (1).mp3"));
+        tokio::fs::write(&path, b"audio").await.unwrap();
+        tokio::fs::write(&first_suffix, b"audio").await.unwrap();
+
+        let resolved =
+            resolve_output_path(path.to_string_lossy().into_owned(), "rename".to_string())
+                .await
+                .unwrap();
+
+        assert_eq!(
+            resolved,
+            Some(
+                parent
+                    .join(format!("{stem} (2).mp3"))
+                    .to_string_lossy()
+                    .into_owned()
+            )
+        );
+        let _ = tokio::fs::remove_file(path).await;
+        let _ = tokio::fs::remove_file(first_suffix).await;
+    }
+
+    #[tokio::test]
+    async fn test_resolve_output_path_rejects_unknown_strategy() {
+        let path = unique_temp_path("mp3");
+
+        let error = resolve_output_path(path.to_string_lossy().into_owned(), "explode".to_string())
+            .await
+            .unwrap_err();
+
+        assert!(error.contains("Unsupported conflict strategy"));
     }
 
     #[tokio::test]
