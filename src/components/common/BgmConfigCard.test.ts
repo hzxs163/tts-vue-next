@@ -111,4 +111,39 @@ describe("BgmConfigCard", () => {
 
     expect(wrapper.text()).toContain("lofi.mp3");
   });
+
+  it("re-renders the ducking strength labels when the locale changes", async () => {
+    const bgmStore = useBgmStore();
+    bgmStore.setEnabled(true);
+    const wrapper = mountComponent();
+
+    expect(wrapper.text()).toContain("柔和");
+    expect(wrapper.text()).toContain("强力");
+
+    // The labels used to be built as a plain array in setup(), which kept the
+    // language they were created with after a locale switch.
+    i18n.global.locale.value = "en";
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.text()).toContain("Gentle");
+    expect(wrapper.text()).toContain("Strong");
+    expect(wrapper.text()).not.toContain("柔和");
+
+    i18n.global.locale.value = "zh";
+  });
+
+  it("shows the maximum attenuation derived from the ducking ratio", async () => {
+    const bgmStore = useBgmStore();
+    bgmStore.setEnabled(true);
+    bgmStore.setDuckingStrength("medium");
+    const wrapper = mountComponent();
+
+    // ratio 4 => 20 * log10(1/4) = -12 dB
+    expect(wrapper.text()).toContain("-12 dB");
+
+    bgmStore.setDuckingStrength("strong");
+    await wrapper.vm.$nextTick();
+    // ratio 8 => -18 dB
+    expect(wrapper.text()).toContain("-18 dB");
+  });
 });

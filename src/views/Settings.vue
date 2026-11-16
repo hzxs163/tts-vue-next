@@ -73,60 +73,62 @@ async function selectSavePath() {
 
         <v-card-text class="settings-panel__body">
           <div class="settings-panel__content">
-            <section class="settings-group settings-group--primary">
-              <div class="settings-group__header">
-                <v-icon size="18" color="primary">mdi-folder-cog-outline</v-icon>
-                <span class="text-subtitle-1 font-weight-medium">{{
-                  $t("settings.sections.output")
-                }}</span>
-              </div>
+            <div class="settings-column settings-column--main">
+              <section class="settings-group">
+                <div class="settings-group__header">
+                  <v-icon size="18" color="primary">mdi-folder-cog-outline</v-icon>
+                  <span class="text-subtitle-1 font-weight-medium">{{
+                    $t("settings.sections.output")
+                  }}</span>
+                </div>
 
-              <div class="settings-fields">
-                <div class="settings-field settings-field--full">
-                  <v-text-field
-                    :model-value="settingsStore.savePath"
-                    :label="$t('settings.fields.savePath')"
-                    :placeholder="$t('settings.fields.savePathPlaceholder')"
+                <div class="settings-fields">
+                  <div class="settings-field settings-field--full">
+                    <v-text-field
+                      :model-value="settingsStore.savePath"
+                      :label="$t('settings.fields.savePath')"
+                      :placeholder="$t('settings.fields.savePathPlaceholder')"
+                      density="comfortable"
+                      readonly
+                      append-inner-icon="mdi-folder-outline"
+                      @click="selectSavePath"
+                    />
+                  </div>
+
+                  <v-select
+                    :model-value="settingsStore.outputFormat"
+                    :items="formatOptions"
                     density="comfortable"
-                    readonly
-                    append-inner-icon="mdi-folder-outline"
-                    @click="selectSavePath"
+                    :label="$t('settings.fields.defaultFormat')"
+                    @update:model-value="settingsStore.updateOutputFormat"
+                  />
+
+                  <v-select
+                    :model-value="settingsStore.fileNamePattern"
+                    :items="fileNamePatternOptions"
+                    density="comfortable"
+                    :label="$t('settings.fields.fileNamePattern')"
+                    @update:model-value="settingsStore.updateFileNamePattern"
+                  />
+
+                  <v-select
+                    :model-value="settingsStore.language"
+                    :items="languageOptions"
+                    density="comfortable"
+                    :label="$t('settings.fields.displayLanguage')"
+                    @update:model-value="settingsStore.updateLanguage"
+                  />
+
+                  <v-select
+                    :model-value="settingsStore.conflictStrategy"
+                    :items="conflictOptions"
+                    density="comfortable"
+                    :label="$t('settings.fields.conflictStrategy')"
+                    @update:model-value="settingsStore.updateConflictStrategy"
                   />
                 </div>
 
-                <v-select
-                  :model-value="settingsStore.outputFormat"
-                  :items="formatOptions"
-                  density="comfortable"
-                  :label="$t('settings.fields.defaultFormat')"
-                  @update:model-value="settingsStore.updateOutputFormat"
-                />
-
-                <v-select
-                  :model-value="settingsStore.fileNamePattern"
-                  :items="fileNamePatternOptions"
-                  density="comfortable"
-                  :label="$t('settings.fields.fileNamePattern')"
-                  @update:model-value="settingsStore.updateFileNamePattern"
-                />
-
-                <v-select
-                  :model-value="settingsStore.language"
-                  :items="languageOptions"
-                  density="comfortable"
-                  :label="$t('settings.fields.displayLanguage')"
-                  @update:model-value="settingsStore.updateLanguage"
-                />
-
-                <v-select
-                  :model-value="settingsStore.conflictStrategy"
-                  :items="conflictOptions"
-                  density="comfortable"
-                  :label="$t('settings.fields.conflictStrategy')"
-                  @update:model-value="settingsStore.updateConflictStrategy"
-                />
-
-                <div class="settings-field settings-field--full">
+                <div class="settings-toggles">
                   <v-switch
                     :model-value="settingsStore.autoplay"
                     :label="$t('settings.fields.autoplay')"
@@ -135,9 +137,7 @@ async function selectSavePath() {
                     hide-details
                     @update:model-value="(value) => settingsStore.updateAutoplay(Boolean(value))"
                   />
-                </div>
 
-                <div class="settings-field settings-field--full">
                   <v-switch
                     :model-value="settingsStore.exportSubtitles"
                     :label="$t('settings.fields.exportSubtitles')"
@@ -149,47 +149,49 @@ async function selectSavePath() {
                     "
                   />
                 </div>
-              </div>
-            </section>
+              </section>
 
-            <section class="settings-group settings-group--secondary">
-              <div class="settings-group__header">
-                <v-icon size="18" color="primary">mdi-tune-variant</v-icon>
-                <span class="text-subtitle-1 font-weight-medium">{{
-                  $t("settings.sections.processing")
-                }}</span>
-              </div>
+              <section class="settings-group">
+                <div class="settings-group__header">
+                  <v-icon size="18" color="primary">mdi-tune-variant</v-icon>
+                  <span class="text-subtitle-1 font-weight-medium">{{
+                    $t("settings.sections.processing")
+                  }}</span>
+                </div>
 
-              <div class="settings-stack">
-                <v-select
-                  :model-value="settingsStore.maxRetries"
-                  :items="retryOptions"
-                  density="comfortable"
-                  :label="$t('settings.fields.maxRetries')"
-                  @update:model-value="settingsStore.updateMaxRetries"
-                />
+                <div class="settings-fields settings-fields--adaptive">
+                  <v-select
+                    :model-value="settingsStore.maxRetries"
+                    :items="retryOptions"
+                    density="comfortable"
+                    :label="$t('settings.fields.maxRetries')"
+                    @update:model-value="settingsStore.updateMaxRetries"
+                  />
 
-                <v-select
-                  :model-value="settingsStore.fileConcurrency"
-                  :items="concurrencyOptions"
-                  density="comfortable"
-                  :label="$t('settings.fields.fileConcurrency')"
-                  @update:model-value="settingsStore.updateFileConcurrency"
-                />
+                  <v-select
+                    :model-value="settingsStore.fileConcurrency"
+                    :items="concurrencyOptions"
+                    density="comfortable"
+                    :label="$t('settings.fields.fileConcurrency')"
+                    @update:model-value="settingsStore.updateFileConcurrency"
+                  />
 
-                <v-select
-                  :model-value="settingsStore.chunkConcurrency"
-                  :items="concurrencyOptions"
-                  density="comfortable"
-                  :label="$t('settings.fields.chunkConcurrency')"
-                  @update:model-value="settingsStore.updateChunkConcurrency"
-                />
-              </div>
-            </section>
+                  <v-select
+                    :model-value="settingsStore.chunkConcurrency"
+                    :items="concurrencyOptions"
+                    density="comfortable"
+                    :label="$t('settings.fields.chunkConcurrency')"
+                    @update:model-value="settingsStore.updateChunkConcurrency"
+                  />
+                </div>
+              </section>
+            </div>
 
-            <section class="settings-group settings-group--bgm">
-              <BgmConfigCard :elevation="0" />
-            </section>
+            <div class="settings-column settings-column--side">
+              <section class="settings-group settings-group--bgm">
+                <BgmConfigCard :elevation="0" />
+              </section>
+            </div>
           </div>
         </v-card-text>
       </v-card>
@@ -229,80 +231,112 @@ async function selectSavePath() {
   flex: 1;
   display: flex;
   min-height: 0;
-  overflow: hidden;
+  /* Content that does not fit has to scroll, never get clipped. */
+  overflow-y: auto;
+  overflow-x: hidden;
   padding-top: 5px;
 }
 
 .settings-panel__content {
   flex: 1;
-  display: flex;
-  gap: 10px;
-  min-height: 0;
-  overflow: hidden;
+  display: grid;
+  /*
+   * The side column holds the BGM card, which needs a fixed minimum width
+   * for its four strength buttons; the main column takes the rest. Using
+   * grid instead of flex keeps both columns from collapsing into each
+   * other when the window gets narrow.
+   */
+  grid-template-columns: minmax(0, 1.2fr) minmax(320px, 1fr);
+  gap: 12px;
+  align-items: start;
+  min-width: 0;
+}
+
+.settings-column {
+  display: grid;
+  gap: 12px;
+  /* Cards keep their natural height instead of stretching into empty
+     columns that leave a large void at the bottom of the page. */
+  align-content: start;
+  min-width: 0;
 }
 
 .settings-group {
   border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
   border-radius: 20px;
   background: rgba(var(--v-theme-surface), 0.6);
-  padding: 14px;
+  padding: 16px;
   display: flex;
   flex-direction: column;
   gap: 14px;
-  min-height: 0;
-}
-
-.settings-group--primary {
-  flex: 1;
   min-width: 0;
 }
 
-.settings-group--secondary {
-  width: 320px;
-  flex-shrink: 0;
+.settings-group--bgm {
+  padding: 12px;
 }
 
 .settings-group__header {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
 }
 
 .settings-fields {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 10px 12px;
+}
+
+/*
+ * The processing group holds three numeric selects. `auto-fit` keeps them on
+ * a single row while there is room and folds them over before a label ever
+ * gets truncated.
+ */
+.settings-fields--adaptive {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
 }
 
 .settings-field--full {
   grid-column: 1 / -1;
 }
 
-.settings-stack {
+.settings-toggles {
   display: flex;
-  flex-direction: column;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 4px 24px;
 }
 
-@media (max-width: 1080px) {
-  .settings-panel__content {
-    flex-direction: column;
-    overflow-y: auto;
-    padding-right: 2px;
-  }
+.settings-toggles :deep(.v-switch) {
+  flex: 0 1 auto;
+  min-width: 0;
+}
 
-  .settings-group--secondary {
-    width: auto;
+.settings-toggles :deep(.v-label) {
+  white-space: normal;
+  overflow: visible;
+}
+
+@media (max-width: 900px) {
+  .settings-panel__content {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
 @media (max-width: 720px) {
-  .settings-fields {
-    grid-template-columns: 1fr;
+  .settings-fields,
+  .settings-fields--adaptive {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .settings-field--full {
     grid-column: auto;
+  }
+
+  .settings-toggles {
+    flex-direction: column;
+    gap: 4px;
   }
 }
 </style>

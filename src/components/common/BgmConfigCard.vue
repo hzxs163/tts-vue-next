@@ -39,11 +39,30 @@ const duckingThreshold = computed({
   },
 });
 
-const duckingStrengths: Array<{ value: DuckingStrength; label: string }> = [
+/*
+ * Has to be a computed: the labels are translated, and a plain array would
+ * keep the language it was created with when the user switches the locale.
+ */
+const duckingStrengths = computed<Array<{ value: DuckingStrength; label: string }>>(() => [
   { value: "gentle", label: t("bgm.strengths.gentle") },
   { value: "medium", label: t("bgm.strengths.medium") },
   { value: "strong", label: t("bgm.strengths.strong") },
-];
+]);
+
+/**
+ * Maximum attenuation the sidechain compressor applies to the music.
+ *
+ * `sidechaincompress` reduces the gain by the ratio, so the attenuation is
+ * 20 * log10(1 / ratio). Deriving it from the live value keeps the readout
+ * correct for the custom parameters as well.
+ */
+const duckingReductionDb = computed(() => {
+  const ratio = bgmStore.duckingRatio;
+  if (!Number.isFinite(ratio) || ratio <= 1) {
+    return 0;
+  }
+  return Math.round(20 * Math.log10(1 / ratio));
+});
 
 function selectDuckingStrength(strength: DuckingStrength) {
   bgmStore.setDuckingStrength(strength);
@@ -177,7 +196,7 @@ function selectDuckingStrength(strength: DuckingStrength) {
                 variant="outlined"
                 density="compact"
                 divided
-                class="w-100"
+                class="w-100 bgm-strength-toggle"
               >
                 <v-btn
                   v-for="item in duckingStrengths"
@@ -198,6 +217,10 @@ function selectDuckingStrength(strength: DuckingStrength) {
                   {{ t("bgm.customDucking") }}
                 </v-btn>
               </v-btn-toggle>
+
+              <div class="text-caption text-medium-emphasis mt-2">
+                {{ t("bgm.duckingReduction", { db: duckingReductionDb }) }}
+              </div>
 
               <div v-if="bgmStore.customDucking" class="mt-3">
                 <div class="d-flex align-center justify-space-between mb-1">
@@ -285,5 +308,54 @@ function selectDuckingStrength(strength: DuckingStrength) {
 .ducking-box {
   background-color: rgba(var(--v-theme-primary), 0.05);
   border-color: rgba(var(--v-theme-primary), 0.18) !important;
+}
+
+/*
+ * The card lives in a narrow side column, so every row has to be able to
+ * shrink instead of forcing the card to grow past its column.
+ */
+.bgm-card {
+  min-width: 0;
+}
+
+.bgm-card__header :deep(.v-card-title),
+.bgm-card__header :deep(.v-card-subtitle) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* A two line title keeps the full name readable in the narrow side column. */
+.bgm-card__header :deep(.v-card-title) {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.3;
+}
+
+.bgm-card__content {
+  min-width: 0;
+}
+
+.ducking-box {
+  min-width: 0;
+}
+
+/* The switch must never be squeezed by the description next to it. */
+.ducking-box :deep(.v-switch) {
+  flex: 0 0 auto;
+  margin-inline-start: 8px;
+}
+
+/*
+ * Four strength buttons in one row need all of their width. Without the
+ * padding override they overflow the card in the side column.
+ */
+.bgm-strength-toggle {
+  min-width: 0;
+}
+
+.bgm-strength-toggle :deep(.v-btn) {
+  min-width: 0;
+  padding-inline: 6px;
 }
 </style>

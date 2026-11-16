@@ -10,6 +10,12 @@ const { t } = useI18n();
 const latestVersion = ref<string | null>(null);
 const hasUpdate = ref(false);
 
+/**
+ * Width of the navigation drawer. Kept in one place because the content
+ * column has to subtract the very same value to avoid a horizontal gap.
+ */
+const SIDEBAR_WIDTH = 164;
+
 const navItems = computed(() => [
   { title: t("nav.textToSpeech"), icon: "mdi-star", to: "/" },
   { title: t("nav.batchConvert"), icon: "mdi-file-multiple", to: "/batch" },
@@ -98,8 +104,13 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="app-shell">
-    <v-navigation-drawer permanent width="150" class="app-sidebar glass-panel" elevation="0">
+  <div class="app-shell" :style="{ '--app-sidebar-width': `${SIDEBAR_WIDTH}px` }">
+    <v-navigation-drawer
+      permanent
+      :width="SIDEBAR_WIDTH"
+      class="app-sidebar glass-panel"
+      elevation="0"
+    >
       <v-list nav density="comfortable" class="app-sidebar__nav">
         <v-list-item
           v-for="item in navItems"
@@ -171,6 +182,28 @@ onMounted(() => {
   display: grid;
   gap: 5px;
   flex: 1;
+  /*
+   * Vuetify puts a 32px gap between the leading icon and the label, which
+   * left the label with barely 60px and forced it to be truncated.
+   */
+  --v-list-prepend-gap: 12px;
+}
+
+/*
+ * The default list item title is truncated with an ellipsis, which cut off
+ * labels such as "多角色演播". A slightly smaller title plus wrapping keeps
+ * every label readable, also for the longer English ones.
+ */
+.app-sidebar__nav :deep(.v-list-item-title) {
+  font-size: 14px;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  line-height: 1.35;
+  padding-block: 2px;
+  /* Never split a word in the middle ("Dictionar" / "y"). */
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .app-sidebar__footer {
@@ -199,7 +232,7 @@ onMounted(() => {
 
 .app-main {
   height: 100%;
-  width: calc(100vw - 150px);
+  width: calc(100vw - var(--app-sidebar-width, 164px));
   overflow-y: auto;
 }
 </style>

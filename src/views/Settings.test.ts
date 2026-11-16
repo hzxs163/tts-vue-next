@@ -163,4 +163,36 @@ describe("Settings view", () => {
     expect(invokeMock).toHaveBeenCalledWith("select_folder");
     expect(settingsStore.savePath).toBe("C:/exports");
   });
+
+  test("lays the groups out in two columns instead of three squeezed ones", async () => {
+    const wrapper = await mountSettings();
+
+    // A three column flex layout squeezed the output group down to roughly
+    // 190px, which truncated every field inside it.
+    const content = wrapper.find(".settings-panel__content");
+    expect(content.exists()).toBe(true);
+
+    const columns = content.findAll(".settings-column");
+    expect(columns).toHaveLength(2);
+    expect(columns[0].classes()).toContain("settings-column--main");
+    expect(columns[1].classes()).toContain("settings-column--side");
+
+    // Output and processing share the main column, BGM lives on its own.
+    expect(columns[0].findAll(".settings-group")).toHaveLength(2);
+    expect(columns[1].findAll(".settings-group")).toHaveLength(1);
+
+    // Every output field has to survive the reflow.
+    const labels = wrapper.findAll(".select-stub").map((select) => select.attributes("data-label"));
+    expect(labels).toEqual(
+      expect.arrayContaining([
+        "Default Format",
+        "Save File Name Pattern",
+        "Display Language",
+        "Existing Files",
+        "Max Retries",
+        "File Concurrency",
+        "Chunk Concurrency",
+      ]),
+    );
+  });
 });
