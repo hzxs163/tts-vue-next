@@ -2,6 +2,7 @@ import "vuetify/styles";
 import "../styles/mdi-subset.css";
 import { createVuetify } from "vuetify";
 import {
+  VAlert,
   VApp,
   VAppBar,
   VAvatar,
@@ -15,11 +16,13 @@ import {
   VCardText,
   VCardTitle,
   VCheckbox,
+  VCheckboxBtn,
   VChip,
   VCol,
   VContainer,
   VDialog,
   VDivider,
+  VExpandTransition,
   VFadeTransition,
   VIcon,
   VList,
@@ -48,6 +51,7 @@ import { Ripple } from "vuetify/directives";
 
 export const vuetify = createVuetify({
   components: {
+    VAlert,
     VApp,
     VAppBar,
     VAvatar,
@@ -61,11 +65,13 @@ export const vuetify = createVuetify({
     VCardText,
     VCardTitle,
     VCheckbox,
+    VCheckboxBtn,
     VChip,
     VCol,
     VContainer,
     VDialog,
     VDivider,
+    VExpandTransition,
     VFadeTransition,
     VIcon,
     VList,
