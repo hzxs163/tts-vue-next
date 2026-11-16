@@ -24,6 +24,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
             commands::tts::tts_convert,
+            commands::tts::tts_get_subtitles,
             commands::tts::tts_stop,
             commands::service::check_tts_service,
             commands::voices::get_voices,

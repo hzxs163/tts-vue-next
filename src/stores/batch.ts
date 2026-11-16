@@ -6,9 +6,9 @@ import type {
   ConflictStrategy,
   NovelChapter,
   OutputFormat,
+  SubtitleTrack,
   TtsParams,
   TtsProgressEvent,
-  TtsSubtitlesEvent,
 } from "../types";
 import { useSettingsStore } from "./settings";
 import { useVoicesStore } from "./voices";
@@ -26,7 +26,6 @@ interface BatchState {
   files: BatchFile[];
   converting: boolean;
   stopRequested: boolean;
-  subtitlesMap: Record<string, TtsSubtitlesEvent>;
 }
 
 interface BatchExecutionSnapshot {
@@ -83,12 +82,26 @@ function updateFile(files: BatchFile[], id: string, patch: Partial<BatchFile>): 
   return files.map((file) => (file.id === id ? { ...file, ...patch } : file));
 }
 
+/**
+ * Fetches the subtitle track produced by a finished `tts_convert` call.
+ *
+ * The track is retrieved with an explicit command instead of an event so the
+ * result can never be lost to an event/response ordering race. Failures are
+ * swallowed: subtitles are a nice-to-have next to the audio file.
+ */
+export async function fetchSubtitleTrack(taskId: string): Promise<SubtitleTrack | null> {
+  try {
+    return await invoke<SubtitleTrack | null>("tts_get_subtitles", { taskId });
+  } catch {
+    return null;
+  }
+}
+
 export const useBatchStore = defineStore("batch", {
   state: (): BatchState => ({
     files: [],
     converting: false,
     stopRequested: false,
-    subtitlesMap: {},
   }),
 
   actions: {
@@ -107,12 +120,6 @@ export const useBatchStore = defineStore("batch", {
         state.files = updateFile(state.files, event.taskId, {
           progress: 30 + Math.round(50 * ratio),
         });
-      });
-    },
-
-    applySubtitles(event: TtsSubtitlesEvent) {
-      this.$patch((state) => {
-        state.subtitlesMap[event.taskId] = event;
       });
     },
 
@@ -345,7 +352,7 @@ export const useBatchStore = defineStore("batch", {
           );
 
           if (snapshot.exportSubtitles) {
-            const srtData = this.subtitlesMap[file.id]?.srt;
+            const srtData = await fetchSubtitleTrack(file.id);
             if (srtData) {
               const srtPath = outputPath.replace(/\.[^.]+$/, "") + ".srt";
               try {
@@ -355,7 +362,6 @@ export const useBatchStore = defineStore("batch", {
               }
             }
           }
-          delete this.subtitlesMap[file.id];
 
           const cleanupWarning = cleanupError
             ? i18n.global.t("batch.errors.failedToRemoveTempFile", {

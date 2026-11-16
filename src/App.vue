@@ -9,7 +9,7 @@ import i18n from "./plugins/i18n";
 import { useSettingsStore } from "./stores/settings";
 import { useTtsStore } from "./stores/tts";
 import { useBatchStore } from "./stores/batch";
-import type { TtsProgressEvent, TtsSubtitlesEvent } from "./types";
+import type { TtsProgressEvent } from "./types";
 import { normalizeAppLanguage, normalizeAppLocale } from "./utils/appLocale";
 import { resolveThemeName } from "./utils/themeMode";
 import { MessageProvider } from "vuetify-message-vue3";
@@ -20,7 +20,6 @@ const ttsStore = useTtsStore();
 const batchStore = useBatchStore();
 let media: MediaQueryList | null = null;
 let unlistenProgress: UnlistenFn | null = null;
-let unlistenSubtitles: UnlistenFn | null = null;
 
 function applyTheme() {
   theme.change(resolveThemeName(settingsStore.themeMode, media?.matches ?? false));
@@ -55,20 +54,12 @@ onMounted(() => {
   }).then((fn) => {
     unlistenProgress = fn;
   });
-
-  void listen<TtsSubtitlesEvent>("tts://subtitles", (event) => {
-    ttsStore.applySubtitles(event.payload);
-    batchStore.applySubtitles(event.payload);
-  }).then((fn) => {
-    unlistenSubtitles = fn;
-  });
 });
 
 onUnmounted(() => {
   media?.removeEventListener("change", applyTheme);
   media = null;
   unlistenProgress?.();
-  unlistenSubtitles?.();
 });
 
 watch(() => settingsStore.themeMode, applyTheme);

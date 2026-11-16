@@ -247,11 +247,12 @@ describe("useTtsStore", () => {
 
   test("prevents concurrent convert calls", async () => {
     let resolveInvoke: ((value: ArrayBuffer) => void) | undefined;
-    invokeMock.mockImplementation(
-      () =>
-        new Promise<ArrayBuffer>((resolve) => {
-          resolveInvoke = resolve;
-        }),
+    invokeMock.mockImplementation((command: string) =>
+      command === "tts_convert"
+        ? new Promise<ArrayBuffer>((resolve) => {
+            resolveInvoke = resolve;
+          })
+        : Promise.resolve(null),
     );
     const { useTtsStore } = await import("./tts");
     const store = useTtsStore();
@@ -331,7 +332,7 @@ describe("useTtsStore", () => {
     expect(store.progress).toBe(99);
   });
 
-  test("applies subtitles only for the active task", async () => {
+  test("applies a fetched subtitle track and ignores a missing one", async () => {
     const { useTtsStore } = await import("./tts");
     const store = useTtsStore();
 
@@ -341,21 +342,42 @@ describe("useTtsStore", () => {
       subtitles: null,
     });
 
-    store.applySubtitles({
-      taskId: "different-task",
-      srt: "1\n00:00:01,000 --> 00:00:02,000\nOther\n\n",
-      vtt: "WEBVTT\n\n",
-      cues: [],
-    });
+    store.applySubtitles(null);
     expect(store.subtitles).toBeNull();
 
     store.applySubtitles({
-      taskId: "task-sub-1",
       srt: "1\n00:00:01,000 --> 00:00:02,000\nHello\n\n",
       vtt: "WEBVTT\n\n1\n00:00:01.000 --> 00:00:02.000\nHello\n\n",
       cues: [{ offset: 0, duration: 10000000, startMs: 0, endMs: 1000, text: "Hello" }],
     });
     expect(store.subtitles?.srt).toContain("Hello");
     expect(store.subtitles?.cues).toHaveLength(1);
+  });
+
+  test("fetches the subtitle track right after a successful conversion", async () => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "tts_convert") {
+        return new Uint8Array([1, 2, 3]).buffer;
+      }
+      if (command === "tts_get_subtitles") {
+        return {
+          srt: "1\n00:00:00,000 --> 00:00:01,000\nHi\n\n",
+          vtt: "WEBVTT\n\n",
+          cues: [{ offset: 0, duration: 10000000, startMs: 0, endMs: 1000, text: "Hi" }],
+        };
+      }
+      return null;
+    });
+
+    const { useTtsStore } = await import("./tts");
+    const store = useTtsStore();
+    store.$patch({ text: "hello" });
+
+    await store.convert();
+
+    const commands = invokeMock.mock.calls.map((call) => call[0]);
+    expect(commands).toContain("tts_convert");
+    expect(commands).toContain("tts_get_subtitles");
+    expect(store.subtitles?.srt).toContain("Hi");
   });
 });

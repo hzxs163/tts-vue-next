@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import { invoke } from "@tauri-apps/api/core";
-import type { SubtitleTrack, TtsParams, TtsProgressEvent, TtsSubtitlesEvent } from "../types";
+import type { SubtitleTrack, TtsParams, TtsProgressEvent } from "../types";
 import { useVoicesStore } from "./voices";
 import { useSettingsStore } from "./settings";
 import { useDictionaryStore } from "./dictionary";
@@ -89,16 +89,16 @@ export const useTtsStore = defineStore("tts", {
       });
     },
 
-    applySubtitles(event: TtsSubtitlesEvent) {
-      if (!this.currentTaskId || this.currentTaskId !== event.taskId) {
+    applySubtitles(track: SubtitleTrack | null) {
+      if (!track || !Array.isArray(track.cues) || typeof track.srt !== "string") {
         return;
       }
 
       this.$patch({
         subtitles: {
-          srt: event.srt,
-          vtt: event.vtt,
-          cues: event.cues,
+          srt: track.srt,
+          vtt: track.vtt,
+          cues: track.cues,
         },
       });
     },
@@ -155,6 +155,18 @@ export const useTtsStore = defineStore("tts", {
           progress: 100,
           error: null,
         });
+
+        // The subtitle track is fetched explicitly instead of being pushed as
+        // an event: an event could arrive after this task was already closed
+        // and would then be dropped silently.
+        try {
+          const track = await invoke<SubtitleTrack | null>("tts_get_subtitles", { taskId });
+          if (this.requestVersion === requestVersion) {
+            this.applySubtitles(track);
+          }
+        } catch {
+          // Subtitles are optional; the audio is already playable.
+        }
       } catch (error) {
         if (this.requestVersion !== requestVersion) {
           return;

@@ -129,12 +129,13 @@ export interface SubtitleTrack {
   vtt: string;
 }
 
-export interface TtsSubtitlesEvent {
-  taskId: string;
-  srt: string;
-  vtt: string;
-  cues: SubtitleCue[];
-}
+/**
+ * Subtitle track as returned by the `tts_get_subtitles` command.
+ * The track is produced by `tts_convert` and fetched afterwards, so the
+ * frontend never depends on the arrival order of an event and a command
+ * response.
+ */
+export type SubtitlePayload = SubtitleTrack | null;
 
 export interface TtsSettings {
   savePath: string;

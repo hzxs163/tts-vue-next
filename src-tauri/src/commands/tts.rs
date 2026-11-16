@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::future::Future;
 use std::sync::{Arc, LazyLock};
 
@@ -8,12 +8,11 @@ use tokio::sync::{watch, Mutex};
 use crate::commands::error::CommandError;
 use crate::edge_tts::constants::DEFAULT_OUTPUT_FORMAT;
 use crate::edge_tts::errors::EdgeTTSError;
-use crate::edge_tts::types::TTSConfig;
+use crate::edge_tts::types::{SubtitleTrack, TTSConfig};
 use crate::edge_tts::Communicate;
 use crate::utils::retry::{retry_with_backoff, RetryOutcome};
 
 const PROGRESS_EVENT: &str = "tts://progress";
-const SUBTITLES_EVENT: &str = "tts://subtitles";
 
 #[derive(Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -23,19 +22,30 @@ pub struct TtsProgressEvent {
     pub total: usize,
 }
 
-#[derive(Clone, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TtsSubtitlesEvent {
-    pub task_id: String,
-    pub srt: String,
-    pub vtt: String,
-    pub cues: Vec<crate::edge_tts::types::SubtitleCue>,
-}
-
 type ActiveTaskMap = Arc<Mutex<HashMap<String, watch::Sender<bool>>>>;
 
 static ACTIVE_TASKS: LazyLock<ActiveTaskMap> =
     LazyLock::new(|| Arc::new(Mutex::new(HashMap::new())));
+
+/// Number of finished conversions whose subtitle track is kept for retrieval.
+/// The frontend fetches the track right after `tts_convert` resolves, so a
+/// small window is enough; the bound only guards against callers that never
+/// ask for subtitles.
+const SUBTITLE_CACHE_CAPACITY: usize = 32;
+
+type SubtitleCache = Arc<Mutex<VecDeque<(String, SubtitleTrack)>>>;
+
+static SUBTITLE_CACHE: LazyLock<SubtitleCache> =
+    LazyLock::new(|| Arc::new(Mutex::new(VecDeque::new())));
+
+async fn cache_subtitle_track(task_id: &str, track: SubtitleTrack) {
+    let mut cache = SUBTITLE_CACHE.lock().await;
+    cache.retain(|(cached_id, _)| cached_id != task_id);
+    cache.push_back((task_id.to_string(), track));
+    while cache.len() > SUBTITLE_CACHE_CAPACITY {
+        cache.pop_front();
+    }
+}
 
 #[derive(serde::Deserialize)]
 pub struct TtsConvertParams {
@@ -86,19 +96,28 @@ pub async fn tts_convert(
     };
 
     let (audio, subtitles) = synthesize(params, on_progress).await?;
-    let _ = app.emit(
-        SUBTITLES_EVENT,
-        TtsSubtitlesEvent {
-            task_id: task_id.clone(),
-            srt: subtitles.srt,
-            vtt: subtitles.vtt,
-            cues: subtitles.cues,
-        },
-    );
+    // The subtitle track is stored server-side and fetched with an explicit
+    // command. Emitting it as an event would race the command response: the
+    // frontend could observe the response first and drop the event because
+    // its task id no longer matched.
+    cache_subtitle_track(&task_id, subtitles).await;
 
     // Raw IPC body instead of a JSON number array: a 1 MB MP3 otherwise
     // expands to roughly 3-4 MB of JSON text on every conversion.
     Ok(tauri::ipc::Response::new(audio))
+}
+
+/// Returns the subtitle track produced by a previous `tts_convert` call.
+///
+/// The entry is consumed on retrieval so repeated calls do not leak memory.
+#[command]
+pub async fn tts_get_subtitles(task_id: String) -> Result<Option<SubtitleTrack>, CommandError> {
+    let mut cache = SUBTITLE_CACHE.lock().await;
+    let Some(position) = cache.iter().position(|(cached_id, _)| cached_id == &task_id) else {
+        return Ok(None);
+    };
+    let (_, track) = cache.remove(position).unwrap();
+    Ok(Some(track))
 }
 
 async fn synthesize<F>(
@@ -402,6 +421,73 @@ mod tests {
         assert!(error.message.contains("not found"));
     }
 
+    #[tokio::test]
+    async fn test_tts_get_subtitles_returns_cached_track_then_consumes_it() {
+        let _guard = TEST_MUTEX.lock().await;
+        clear_subtitle_cache().await;
+
+        let track = SubtitleTrack {
+            cues: vec![crate::edge_tts::types::SubtitleCue {
+                offset: 0,
+                duration: 500_000,
+                start_ms: 0,
+                end_ms: 50,
+                text: "你好".to_string(),
+            }],
+            srt: "1\n00:00:00,000 --> 00:00:00,050\n你好\n\n".to_string(),
+            vtt: "WEBVTT\n\n".to_string(),
+        };
+        cache_subtitle_track("task-subtitles", track.clone()).await;
+
+        let fetched = tts_get_subtitles("task-subtitles".to_string())
+            .await
+            .unwrap()
+            .expect("expected a cached subtitle track");
+        assert_eq!(fetched.srt, track.srt);
+        assert_eq!(fetched.cues.len(), 1);
+
+        // The entry is consumed on retrieval.
+        let second = tts_get_subtitles("task-subtitles".to_string()).await.unwrap();
+        assert!(second.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_tts_get_subtitles_returns_none_for_unknown_task() {
+        let _guard = TEST_MUTEX.lock().await;
+        clear_subtitle_cache().await;
+
+        let fetched = tts_get_subtitles("never-synthesized".to_string())
+            .await
+            .unwrap();
+        assert!(fetched.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_subtitle_cache_evicts_oldest_entries_beyond_capacity() {
+        let _guard = TEST_MUTEX.lock().await;
+        clear_subtitle_cache().await;
+
+        for index in 0..(SUBTITLE_CACHE_CAPACITY + 3) {
+            cache_subtitle_track(
+                &format!("task-{index}"),
+                SubtitleTrack {
+                    cues: Vec::new(),
+                    srt: format!("srt-{index}"),
+                    vtt: String::new(),
+                },
+            )
+            .await;
+        }
+
+        let oldest = tts_get_subtitles("task-0".to_string()).await.unwrap();
+        assert!(oldest.is_none(), "oldest entry should have been evicted");
+
+        let newest = tts_get_subtitles(format!("task-{}", SUBTITLE_CACHE_CAPACITY + 2).to_string())
+            .await
+            .unwrap();
+        assert!(newest.is_some(), "newest entry should still be cached");
+    }
+
     /// Live probe: `cargo test --lib live_ -- --ignored --nocapture`
     /// Writes the synthesized audio to `.workbuddy/tmp/live_tts_probe.mp3`.
     #[tokio::test]
@@ -446,5 +532,9 @@ mod tests {
 
     async fn clear_active_tasks() {
         ACTIVE_TASKS.lock().await.clear();
+    }
+
+    async fn clear_subtitle_cache() {
+        SUBTITLE_CACHE.lock().await.clear();
     }
 }
