@@ -396,7 +396,7 @@ async function exportSubtitlesFile() {
       <div v-show="activeTab === 'script'" class="studio-tab-pane">
         <!-- Script Actions & Quick Role Bar -->
         <div
-          class="script-actions-bar px-4 py-2 border-b bg-surface-variant-subtle d-flex flex-wrap align-center justify-space-between ga-2"
+          class="script-actions-bar px-4 py-2 border-b d-flex flex-wrap align-center justify-space-between ga-2"
         >
           <div class="d-flex flex-wrap align-center ga-2">
             <v-btn
@@ -623,7 +623,7 @@ async function exportSubtitlesFile() {
       </div>
 
       <!-- ================= TAB 2: 角色声优阵容 ================= -->
-      <div v-show="activeTab === 'cast'" class="studio-tab-pane studio-tab-pane--scroll pa-4">
+      <div v-show="activeTab === 'cast'" class="studio-tab-pane pa-4">
         <!-- Cast Header Actions -->
         <div class="d-flex flex-wrap align-center justify-space-between mb-4 ga-3 flex-shrink-0">
           <div>
@@ -652,7 +652,7 @@ async function exportSubtitlesFile() {
         </div>
 
         <!-- Cast Grid -->
-        <div class="cast-grid-scroll">
+        <div class="cast-grid-scroll pb-6">
           <v-row class="cast-grid">
             <v-col
               v-for="role in dialogueStore.roles"
@@ -770,12 +770,12 @@ async function exportSubtitlesFile() {
       </div>
 
       <!-- ================= TAB 3: 背景音乐与混音 ================= -->
-      <div v-show="activeTab === 'bgm'" class="studio-tab-pane studio-tab-pane--scroll pa-4">
-        <div class="bgm-tab-container">
+      <div v-show="activeTab === 'bgm'" class="studio-tab-pane pa-4">
+        <div class="bgm-tab-container pb-6">
           <BgmConfigCard :elevation="0" class="mb-4" />
 
           <!-- Helpful mixing tips card -->
-          <v-card variant="outlined" rounded="lg" class="pa-4 bg-surface-variant-subtle">
+          <v-card variant="outlined" rounded="lg" class="pa-4 tips-card">
             <div class="d-flex align-center ga-2 mb-2">
               <v-icon color="primary" size="20">mdi-lightbulb-on-outline</v-icon>
               <span class="text-subtitle-2 font-weight-bold">广播剧混音与人声避让技巧</span>
@@ -945,10 +945,10 @@ async function exportSubtitlesFile() {
 
 <style scoped>
 .dialogue-page {
-  height: 100%;
+  min-height: 100%;
   display: flex;
   flex-direction: column;
-  overflow-y: auto;
+  padding: 12px;
   box-sizing: border-box;
 }
 
@@ -960,70 +960,55 @@ async function exportSubtitlesFile() {
 }
 
 .main-studio-card {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 400px;
-  overflow: hidden;
   background: rgba(var(--v-theme-surface), 0.96);
   backdrop-filter: blur(16px);
   border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 32px;
 }
 
 .studio-tab-header {
-  background: rgba(var(--v-theme-surface), 0.8);
-  flex-shrink: 0;
+  background: rgba(var(--v-theme-surface), 0.96);
+  backdrop-filter: blur(16px);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  border-top-left-radius: inherit;
+  border-top-right-radius: inherit;
 }
 
 .studio-tab-pane {
-  flex: 1;
   display: flex;
   flex-direction: column;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.studio-tab-pane--scroll {
-  overflow-y: auto;
+  width: 100%;
 }
 
 .script-actions-bar {
-  flex-shrink: 0;
-}
-
-.script-player-bar {
-  flex-shrink: 0;
-}
-
-.bg-surface-variant-subtle {
-  background-color: rgba(var(--v-theme-surface-variant), 0.25);
+  background: rgba(var(--v-theme-surface), 0.96);
+  backdrop-filter: blur(12px);
+  position: sticky;
+  top: 48px;
+  z-index: 9;
 }
 
 .script-lines-scroll {
-  flex: 1;
-  overflow-y: auto;
-  min-height: 0;
+  width: 100%;
 }
 
-.script-lines-scroll,
-.studio-tab-pane--scroll {
-  scrollbar-gutter: stable;
+.script-player-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  background: rgba(var(--v-theme-surface), 0.98);
+  backdrop-filter: blur(16px);
+  border-top: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.08);
 }
 
-.script-lines-scroll::-webkit-scrollbar,
-.studio-tab-pane--scroll::-webkit-scrollbar {
-  width: 6px;
-}
-
-.script-lines-scroll::-webkit-scrollbar-thumb,
-.studio-tab-pane--scroll::-webkit-scrollbar-thumb {
-  background-color: rgba(var(--v-theme-on-surface), 0.2);
-  border-radius: 4px;
-}
-
-.script-lines-scroll:hover::-webkit-scrollbar-thumb,
-.studio-tab-pane--scroll:hover::-webkit-scrollbar-thumb {
-  background-color: rgba(var(--v-theme-on-surface), 0.45);
+.tips-card {
+  background: rgba(var(--v-theme-primary), 0.04);
+  border: 1px solid rgba(var(--v-theme-primary), 0.16) !important;
 }
 
 .cast-grid-scroll {
@@ -1055,21 +1040,20 @@ async function exportSubtitlesFile() {
 
 .add-role-card {
   border: 2px dashed rgba(var(--v-border-color), 0.8);
-  background: rgba(var(--v-theme-surface-variant), 0.15);
+  background: rgba(var(--v-theme-primary), 0.04);
   transition: all 0.2s ease;
   min-height: 180px;
 }
 
 .add-role-card:hover {
   border-color: rgb(var(--v-theme-primary));
-  background: rgba(var(--v-theme-primary), 0.05);
+  background: rgba(var(--v-theme-primary), 0.08);
 }
 
 .bgm-tab-container {
   max-width: 820px;
   margin: 0 auto;
   width: 100%;
-  overflow-y: auto;
 }
 
 .cursor-pointer {

@@ -72,7 +72,7 @@ function selectDuckingStrength(strength: DuckingStrength) {
         <div class="mb-4">
           <div
             v-if="bgmStore.hasBgmFile"
-            class="d-flex align-center justify-space-between p-2 bg-surface-variant rounded px-3 py-2"
+            class="selected-file-box d-flex align-center justify-space-between rounded px-3 py-2"
           >
             <div class="d-flex align-center text-truncate mr-2">
               <v-icon icon="mdi-music-circle" color="primary" class="mr-2" />
@@ -135,7 +135,7 @@ function selectDuckingStrength(strength: DuckingStrength) {
         </div>
 
         <!-- Audio Ducking Switch and Strength -->
-        <div class="ducking-box mt-3 pa-3 rounded-lg border bg-surface-variant">
+        <div class="ducking-box mt-3 pa-3 rounded-lg border">
           <div class="d-flex align-center justify-space-between mb-1">
             <div class="d-flex flex-column">
               <span class="text-body-2 font-weight-bold">{{ t("bgm.enableDucking") }}</span>
@@ -210,7 +210,12 @@ function selectDuckingStrength(strength: DuckingStrength) {
   border-width: 1.5px !important;
   text-transform: none;
 }
+.selected-file-box {
+  background-color: rgba(var(--v-theme-primary), 0.06);
+  border: 1px solid rgba(var(--v-theme-primary), 0.2);
+}
 .ducking-box {
-  background-color: rgba(var(--v-theme-surface-variant), 0.35);
+  background-color: rgba(var(--v-theme-primary), 0.05);
+  border-color: rgba(var(--v-theme-primary), 0.18) !important;
 }
 </style>
