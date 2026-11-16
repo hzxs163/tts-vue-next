@@ -13,6 +13,7 @@ const hasUpdate = ref(false);
 const navItems = computed(() => [
   { title: t("nav.textToSpeech"), icon: "mdi-star", to: "/" },
   { title: t("nav.batchConvert"), icon: "mdi-file-multiple", to: "/batch" },
+  { title: t("nav.dialogue"), icon: "mdi-account-voice", to: "/dialogue" },
   { title: t("nav.dictionary"), icon: "mdi-translate", to: "/dictionary" },
   { title: t("nav.settings"), icon: "mdi-cog", to: "/settings" },
 ]);

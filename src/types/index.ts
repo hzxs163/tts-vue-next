@@ -71,6 +71,37 @@ export interface SplitNovelResult {
   novelTitle: string;
 }
 
+export interface DialogueRole {
+  id: string;
+  name: string;
+  voice: string;
+  rate: number;
+  pitch: number;
+  volume: number;
+  color: string;
+  isDefault?: boolean;
+}
+
+export interface DialogueLine {
+  id: string;
+  roleId: string;
+  text: string;
+  pauseAfterMs?: number;
+}
+
+export interface DialogueCastPreset {
+  id: string;
+  name: string;
+  description: string;
+  roles: DialogueRole[];
+}
+
+export interface ParseScriptOptions {
+  mode?: "prefix" | "quotes";
+  defaultRoleId?: string;
+  pauseMs?: number;
+}
+
 export interface SubtitleCue {
   offset: number;
   duration: number;
