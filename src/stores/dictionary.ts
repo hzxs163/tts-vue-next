@@ -67,6 +67,9 @@ export const useDictionaryStore = defineStore("dictionary", {
           state.rules = validRules.map((r, i) => ({
             ...r,
             id: r.id || `imported-${Date.now()}-${i}`,
+            // A rule without an explicit flag is treated as enabled; a missing
+            // flag would otherwise silently disable the imported rule.
+            enabled: r.enabled !== false,
           }));
         } else {
           // Prepend new rules while avoiding duplicate origins
@@ -76,6 +79,7 @@ export const useDictionaryStore = defineStore("dictionary", {
             .map((r, i) => ({
               ...r,
               id: r.id || `imported-${Date.now()}-${i}`,
+              enabled: r.enabled !== false,
             }));
           state.rules = [...newRules, ...state.rules];
         }

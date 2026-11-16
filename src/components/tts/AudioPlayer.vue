@@ -22,13 +22,21 @@ const currentTime = ref(0);
 const duration = ref(0);
 const playerVolume = ref(100);
 
+/**
+ * How long a caption stays visible after its cue ended. Without it the
+ * banner would flicker off between two closely spaced sentences.
+ */
+const CAPTION_LINGER_MS = 350;
+
 const activeSubtitle = computed(() => {
   if (!ttsStore.subtitles || ttsStore.subtitles.cues.length === 0) {
     return "";
   }
   const currentMs = currentTime.value * 1000;
+  // The cues are sentence level, the same granularity as the exported SRT,
+  // so the banner and the exported file always show the same text.
   const activeCue = ttsStore.subtitles.cues.find(
-    (cue) => cue.startMs <= currentMs && currentMs <= cue.endMs + 350,
+    (cue) => cue.startMs <= currentMs && currentMs <= cue.endMs + CAPTION_LINGER_MS,
   );
   return activeCue?.text || "";
 });

@@ -16,11 +16,14 @@ import { useDictionaryStore } from "./dictionary";
 import { useBgmStore } from "./bgm";
 import { saveAudioBytes } from "../utils/saveAudio";
 import { toErrorMessage } from "../utils/ttsErrors";
+import { sanitizeContentForFileName } from "../utils/fileName";
 
 const EDGE_TTS_OUTPUT_FORMAT = "audio-24khz-48kbitrate-mono-mp3";
 const DEFAULT_RATE = "+0%";
 const DEFAULT_PITCH = "+0Hz";
 const DEFAULT_VOLUME = "+0%";
+/** Longest chapter file name stem, leaving room for the prefix and extension. */
+const MAX_CHAPTER_NAME_LENGTH = 80;
 
 interface BatchState {
   files: BatchFile[];
@@ -153,8 +156,14 @@ export const useBatchStore = defineStore("batch", {
 
     addChapters(chapters: NovelChapter[], sourcePath: string, titlePrefix?: string) {
       const nextFiles = chapters.map<BatchFile>((chapter) => {
-        const baseName = titlePrefix ? `${titlePrefix}_${chapter.title}` : chapter.title;
-        const fileName = `${baseName}.txt`;
+        // Chapter titles come straight from the source novel, so they may
+        // contain characters that are illegal in a Windows file name
+        // (`:` `?` `*` `/` `\` `|` `<` `>` `"`). Sanitize before use, otherwise
+        // the whole batch fails at write time with an opaque OS error.
+        const chapterName = sanitizeContentForFileName(chapter.title, MAX_CHAPTER_NAME_LENGTH);
+        const safePrefix = sanitizeContentForFileName(titlePrefix ?? "", MAX_CHAPTER_NAME_LENGTH);
+        const baseName = safePrefix ? `${safePrefix}_${chapterName}` : chapterName;
+        const fileName = `${baseName || "chapter"}.txt`;
         return {
           id: crypto.randomUUID(),
           name: fileName,

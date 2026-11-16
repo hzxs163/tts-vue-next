@@ -486,4 +486,38 @@ describe("useBatchStore", () => {
     // Verified read_text_file was NOT invoked since file.content was provided
     expect(invokeMock).not.toHaveBeenCalledWith("read_text_file", expect.anything());
   });
+
+  test("strips characters that are illegal in Windows file names from chapter titles", async () => {
+    const { useBatchStore } = await import("./batch");
+    const store = useBatchStore();
+
+    store.addChapters(
+      [
+        {
+          id: "ch-1",
+          index: 1,
+          title: "Chapter 1: The Beginning",
+          content: "It was a dark and stormy night.",
+          charCount: 10,
+          selected: true,
+        },
+        {
+          id: "ch-2",
+          index: 2,
+          title: "第二回 风/雪",
+          content: "北风呼号。",
+          charCount: 4,
+          selected: true,
+        },
+      ],
+      "C:/books/novel.txt",
+      "我的小说",
+    );
+
+    for (const file of store.files) {
+      expect(file.name).not.toMatch(/[\\/:*?"<>|]/);
+    }
+    expect(store.files[0].name).toBe("我的小说_Chapter 1 The Beginning.txt");
+    expect(store.files[1].name).toBe("我的小说_第二回 风 雪.txt");
+  });
 });

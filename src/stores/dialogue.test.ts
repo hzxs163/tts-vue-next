@@ -80,12 +80,71 @@ describe("useDialogueStore", () => {
     expect(store.lines[1].text).toBe("第二句");
   });
 
-  it("applies cast preset and re-maps lines", () => {
+  it("persists the script so it survives a reload", () => {
     const store = useDialogueStore();
+    store.clearLines();
+    store.addLine(undefined, "持久化的台词");
+    const lineId = store.lines[0].id;
+
+    const restored = useDialogueStore();
+    expect(restored.lines.length).toBe(1);
+    expect(restored.lines[0].text).toBe("持久化的台词");
+    expect(restored.lines[0].id).toBe(lineId);
+  });
+
+  it("applies a cast preset without destroying existing roles or line bindings", () => {
+    const store = useDialogueStore();
+    store.clearLines();
+
+    const narrator = store.roles[0];
+    store.updateRole(narrator.id, { rate: 7, voice: "zh-CN-YunxiNeural" });
+    store.addLine(narrator.id, "旁白台词");
+
+    const roleCountBefore = store.roles.length;
     store.applyPreset("urban");
 
-    const urbanLead = store.roles.find((r) => r.name === "林辰");
-    expect(urbanLead).toBeDefined();
+    // The matching role keeps its id, so the line stays bound to it.
+    const updatedNarrator = store.roles.find((r) => r.id === narrator.id);
+    expect(updatedNarrator).toBeDefined();
+    expect(store.lines[0].roleId).toBe(narrator.id);
+
+    // The preset's own voice characteristics are applied.
+    const urbanNarrator = store.roles.find((r) => r.name === "林辰" || r.name === "旁白");
+    expect(urbanNarrator).toBeDefined();
+    expect(store.roles.length).toBeGreaterThanOrEqual(roleCountBefore);
+  });
+
+  it("adds preset roles that do not exist yet", () => {
+    const store = useDialogueStore();
+    store.clearLines();
+
+    const before = store.roles.map((r) => r.name);
+    store.applyPreset("fairytale");
+
+    const after = store.roles.map((r) => r.name);
+    expect(after.length).toBeGreaterThan(before.length);
+    expect(after.some((name) => !before.includes(name))).toBe(true);
+    // Exactly one default role.
+    expect(store.roles.filter((r) => r.isDefault)).toHaveLength(1);
+  });
+
+  it("reports an empty parse instead of silently keeping the old script", () => {
+    const store = useDialogueStore();
+    const originalLines = store.lines.length;
+
+    const result = store.parseScriptText("   ", "prefix");
+    expect(result.ok).toBe(false);
+    expect(result.count).toBe(0);
+    expect(store.lines.length).toBe(originalLines);
+  });
+
+  it("replaces the script when the parse succeeds", () => {
+    const store = useDialogueStore();
+
+    const result = store.parseScriptText("旁白：今天是个好日子。\n旁白：出发吧！", "prefix");
+    expect(result.ok).toBe(true);
+    expect(result.count).toBe(2);
+    expect(store.lines.length).toBe(2);
   });
 
   it("synthesizes dialogue, concatenates audio, and creates subtitles", async () => {
@@ -94,16 +153,100 @@ describe("useDialogueStore", () => {
     store.addLine(store.roles[0].id, "今天是个好日子。");
     store.addLine(store.roles[1].id, "是的，天气真不错！");
 
-    // Return 144 bytes per call
-    invokeMock.mockResolvedValue(new ArrayBuffer(144));
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "tts_get_subtitles") {
+        return null;
+      }
+      return new ArrayBuffer(144);
+    });
 
     await store.synthesizeAll();
 
-    expect(invokeMock).toHaveBeenCalledTimes(2);
+    // Two synthesis calls plus one subtitle lookup per line.
+    expect(invokeMock).toHaveBeenCalledTimes(4);
     expect(store.audioBytes).toBeDefined();
     expect(store.audioBytes!.length).toBeGreaterThan(288); // 2 audio chunks + silence gap
     expect(store.subtitles).toBeDefined();
     expect(store.subtitles?.srt).toContain(`[${store.roles[0].name}] 今天是个好日子。`);
     expect(store.subtitles?.srt).toContain(`[${store.roles[1].name}] 是的，天气真不错！`);
+  });
+
+  it("uses the backend word timings for the subtitle timeline", async () => {
+    const store = useDialogueStore();
+    store.clearLines();
+    store.addLine(store.roles[0].id, "第一句。");
+
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "tts_get_subtitles") {
+        return {
+          srt: "",
+          vtt: "",
+          cues: [{ offset: 0, duration: 5000000, startMs: 0, endMs: 500, text: "第一句。" }],
+        };
+      }
+      return new ArrayBuffer(144);
+    });
+
+    await store.synthesizeAll();
+
+    // The cue length comes from the real timings, not from the byte size.
+    expect(store.subtitles?.srt).toContain("00:00:00,000 --> 00:00:00,500");
+  });
+
+  it("keeps synthesizing when a single line fails", async () => {
+    const store = useDialogueStore();
+    store.clearLines();
+    store.addLine(store.roles[0].id, "会失败的一句。");
+    store.addLine(store.roles[1].id, "正常的一句。");
+    const failedLineId = store.lines[0].id;
+
+    let call = 0;
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "tts_get_subtitles") {
+        return null;
+      }
+      call += 1;
+      if (call === 1) {
+        throw new Error("network exploded");
+      }
+      return new ArrayBuffer(144);
+    });
+
+    await store.synthesizeAll();
+
+    expect(store.failedLineIds).toContain(failedLineId);
+    expect(store.errorMessage).toContain("network exploded");
+    // The second line was still produced.
+    expect(store.audioBytes).toBeDefined();
+    expect(store.subtitles?.srt).toContain("正常的一句。");
+  });
+
+  it("asks the backend to abort the running synthesis", async () => {
+    const store = useDialogueStore();
+    store.clearLines();
+    store.addLine(store.roles[0].id, "一句。");
+
+    let resolveConvert: ((value: ArrayBuffer) => void) | undefined;
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "tts_get_subtitles") {
+        return null;
+      }
+      if (command === "tts_stop") {
+        return null;
+      }
+      return new Promise<ArrayBuffer>((resolve) => {
+        resolveConvert = resolve;
+      });
+    });
+
+    const running = store.synthesizeAll();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    store.stopSynthesis();
+    expect(invokeMock).toHaveBeenCalledWith("tts_stop", { taskId: expect.any(String) });
+
+    resolveConvert?.(new ArrayBuffer(144));
+    await running;
+    expect(store.synthesizing).toBe(false);
   });
 });

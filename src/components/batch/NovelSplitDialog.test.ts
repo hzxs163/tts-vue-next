@@ -6,6 +6,7 @@ import { createPinia, setActivePinia } from "pinia";
 import { defineComponent } from "vue";
 import i18n from "../../plugins/i18n";
 import { useBatchStore } from "../../stores/batch";
+import type { NovelChapter } from "../../types";
 
 const { messageSuccessMock } = vi.hoisted(() => ({
   messageSuccessMock: vi.fn(),
@@ -141,5 +142,46 @@ describe("NovelSplitDialog", () => {
     expect(batchStore.files[0].name).toContain("第01章 第一章");
     expect(batchStore.files[0].content).toContain("少年走出深山");
     expect(messageSuccessMock).toHaveBeenCalledTimes(1);
+  });
+
+  test("keeps the user's chapter selection when an option triggers a re-split", async () => {
+    const rawContent = `
+第1章 第一章
+少年走出深山，开启波澜壮阔的修仙世界。
+
+第2章 第二章
+宗门大选开启，各路英豪齐聚一堂展露风采。
+`;
+
+    const wrapper = await mountDialog({
+      modelValue: true,
+      filePath: "C:/novels/test.txt",
+      fileName: "test.txt",
+      fileSize: "1.2 KB",
+      rawContent,
+    });
+
+    const setup = (wrapper.vm as unknown as { $: { setupState: Record<string, unknown> } }).$
+      .setupState as {
+      parsedChapters: NovelChapter[];
+      toggleChapter: (chapter: NovelChapter, selected: boolean) => void;
+      padIndex: boolean;
+    };
+
+    expect(setup.parsedChapters.length).toBe(2);
+
+    // The user deselects the first chapter.
+    setup.toggleChapter(setup.parsedChapters[0], false);
+    expect(setup.parsedChapters[0].selected).toBe(false);
+    expect(setup.parsedChapters[1].selected).toBe(true);
+
+    // Changing the number padding re-splits the novel.
+    setup.padIndex = false;
+    await wrapper.vm.$nextTick();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(setup.parsedChapters.length).toBe(2);
+    expect(setup.parsedChapters[0].selected).toBe(false);
+    expect(setup.parsedChapters[1].selected).toBe(true);
   });
 });

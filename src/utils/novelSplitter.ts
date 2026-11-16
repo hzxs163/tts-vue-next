@@ -160,6 +160,7 @@ function chunkText(text: string, chunkSize = 4000): NovelChapter[] {
         id: crypto.randomUUID(),
         index: part,
         title: `第 ${part} 部分`,
+        rawTitle: `第 ${part} 部分`,
         content: chunk,
         charCount: chunk.length,
         selected: true,
@@ -186,6 +187,7 @@ export function splitNovel(rawText: string, options: SplitNovelOptions = {}): Sp
     minChapterLength = 20,
     discardEmptyPrologue = true,
     fallbackChunkSize = 4000,
+    novelTitle = "",
   } = options;
 
   let patternStr: string;
@@ -219,7 +221,7 @@ export function splitNovel(rawText: string, options: SplitNovelOptions = {}): Sp
       totalChars: cleaned.length,
       totalChapters: chunks.length,
       adLinesRemoved: removedLines,
-      novelTitle: "",
+      novelTitle,
     };
   }
 
@@ -270,7 +272,7 @@ export function splitNovel(rawText: string, options: SplitNovelOptions = {}): Sp
       totalChars: cleaned.length,
       totalChapters: chunks.length,
       adLinesRemoved: removedLines,
-      novelTitle: "",
+      novelTitle,
     };
   }
 
@@ -304,6 +306,7 @@ export function splitNovel(rawText: string, options: SplitNovelOptions = {}): Sp
       id: crypto.randomUUID(),
       index: chapterIndex,
       title: raw.title,
+      rawTitle: raw.title,
       content: cleaned,
       charCount: cleaned.length,
       selected: true,
@@ -327,6 +330,6 @@ export function splitNovel(rawText: string, options: SplitNovelOptions = {}): Sp
     totalChars,
     totalChapters: parsedChapters.length,
     adLinesRemoved: totalAdLinesRemoved,
-    novelTitle: "",
+    novelTitle,
   };
 }

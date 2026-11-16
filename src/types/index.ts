@@ -41,6 +41,12 @@ export interface NovelChapter {
   id: string;
   index: number;
   title: string;
+  /**
+   * Title before the zero-padding was applied. It stays stable when only the
+   * padding options change, which makes it a reliable key for remembering the
+   * user's chapter selection across re-splits.
+   */
+  rawTitle?: string;
   content: string;
   charCount: number;
   selected: boolean;
@@ -61,6 +67,8 @@ export interface SplitNovelOptions {
   minChapterLength?: number;
   discardEmptyPrologue?: boolean;
   fallbackChunkSize?: number;
+  /** Title of the source novel, shown alongside the split result. */
+  novelTitle?: string;
 }
 
 export interface SplitNovelResult {

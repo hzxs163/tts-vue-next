@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { useMessage } from "vuetify-message-vue3";
 import type { NovelChapter } from "../../types";
 import { DEFAULT_CHAPTER_PRESETS, splitNovel } from "../../utils/novelSplitter";
@@ -19,6 +20,7 @@ const emit = defineEmits<{
 
 const message = useMessage();
 const batchStore = useBatchStore();
+const { t } = useI18n();
 
 const isOpen = computed({
   get: () => props.modelValue,
@@ -37,6 +39,16 @@ const minChapterLength = ref(10);
 // Parsed chapters
 const parsedChapters = ref<NovelChapter[]>([]);
 const totalAdLinesRemoved = ref(0);
+
+/**
+ * Titles of the chapters the user deselected.
+ *
+ * The chapter list is rebuilt whenever any option changes, so the selection
+ * cannot live on the chapter objects alone. It is tracked by the raw title,
+ * which stays stable when only cosmetic options such as the number padding
+ * change.
+ */
+const deselectedTitles = ref<Set<string>>(new Set());
 
 // Chapter full text preview drawer/dialog
 const viewingChapter = ref<NovelChapter | null>(null);
@@ -61,6 +73,10 @@ watch(
   { immediate: true },
 );
 
+function chapterKey(chapter: NovelChapter): string {
+  return chapter.rawTitle ?? chapter.title;
+}
+
 function recomputeChapters() {
   if (!props.rawContent) {
     parsedChapters.value = [];
@@ -75,9 +91,14 @@ function recomputeChapters() {
     padChapterIndex: padIndex.value,
     minChapterLength: Number(minChapterLength.value) || 10,
     discardEmptyPrologue: discardEmptyPrologue.value,
+    novelTitle: titlePrefix.value.trim(),
   });
 
-  parsedChapters.value = result.chapters;
+  const deselected = deselectedTitles.value;
+  parsedChapters.value = result.chapters.map((chapter) => ({
+    ...chapter,
+    selected: !deselected.has(chapterKey(chapter)),
+  }));
   totalAdLinesRemoved.value = result.adLinesRemoved;
 }
 
@@ -110,15 +131,29 @@ const isAllSelected = computed(
 );
 
 function selectAll() {
+  deselectedTitles.value = new Set();
   parsedChapters.value.forEach((ch) => {
     ch.selected = true;
   });
 }
 
 function deselectAll() {
+  deselectedTitles.value = new Set(parsedChapters.value.map((ch) => chapterKey(ch)));
   parsedChapters.value.forEach((ch) => {
     ch.selected = false;
   });
+}
+
+function toggleChapter(chapter: NovelChapter, selected: boolean) {
+  const key = chapterKey(chapter);
+  const next = new Set(deselectedTitles.value);
+  if (selected) {
+    next.delete(key);
+  } else {
+    next.add(key);
+  }
+  deselectedTitles.value = next;
+  chapter.selected = selected;
 }
 
 function confirmImport() {
@@ -130,7 +165,7 @@ function confirmImport() {
   const prefix = titlePrefix.value.trim();
 
   batchStore.addChapters(selectedChapters.value, path, prefix);
-  message.success(`已成功导入 ${selectedCount.value} 个章节到批量转换列表！`);
+  message.success(t("batch.novel.importSuccess", { count: selectedCount.value }));
   isOpen.value = false;
 }
 </script>
@@ -150,7 +185,7 @@ function confirmImport() {
         <v-card-subtitle class="text-caption">
           {{
             $t("batch.novel.fileInfo", {
-              name: fileName || "未知小说",
+              name: fileName || t("batch.novel.unknownFile"),
               size: fileSize || "0 B",
               chars: rawContent ? rawContent.length : 0,
             })
@@ -297,7 +332,12 @@ function confirmImport() {
                 :class="{ 'tr--selected': ch.selected }"
               >
                 <td>
-                  <v-checkbox-btn v-model="ch.selected" color="primary" density="compact" />
+                  <v-checkbox-btn
+                    :model-value="ch.selected"
+                    color="primary"
+                    density="compact"
+                    @update:model-value="toggleChapter(ch, Boolean($event))"
+                  />
                 </td>
                 <td class="font-weight-medium text-truncate" style="max-width: 240px">
                   {{ ch.title }}
@@ -362,7 +402,7 @@ function confirmImport() {
             {{ viewingChapter.title }}
           </v-card-title>
           <v-card-subtitle class="text-caption">
-            {{ viewingChapter.charCount }} 字
+            {{ $t("batch.novel.charUnit", { count: viewingChapter.charCount }) }}
           </v-card-subtitle>
           <template #append>
             <v-btn icon="mdi-close" variant="text" size="small" @click="viewingChapter = null" />
