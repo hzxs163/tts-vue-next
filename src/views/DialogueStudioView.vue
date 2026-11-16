@@ -351,6 +351,11 @@ async function exportSubtitlesFile(format: "srt" | "vtt" = "srt") {
       </div>
 
       <div class="d-flex flex-wrap align-center ga-2 px-4 pb-2-5 mt-1">
+        <!--
+            The secondary actions share one look: outlined, same size, each
+            with an icon. Mixing a tonal button and an icon-less button into
+            the group made the row look like four unrelated controls.
+          -->
         <!-- Cast Presets Menu -->
         <v-menu>
           <template #activator="{ props }">
@@ -375,8 +380,7 @@ async function exportSubtitlesFile(format: "srt" | "vtt" = "srt") {
         </v-menu>
 
         <v-btn
-          variant="tonal"
-          color="primary"
+          variant="outlined"
           prepend-icon="mdi-script-text-outline"
           size="small"
           @click="showImportDialog = true"
@@ -386,6 +390,7 @@ async function exportSubtitlesFile(format: "srt" | "vtt" = "srt") {
 
         <v-btn
           variant="outlined"
+          prepend-icon="mdi-backspace"
           size="small"
           :disabled="dialogueStore.lines.length === 0"
           @click="dialogueStore.clearLines()"
@@ -395,8 +400,8 @@ async function exportSubtitlesFile(format: "srt" | "vtt" = "srt") {
 
         <v-btn
           variant="outlined"
-          size="small"
           prepend-icon="mdi-file-document-outline"
+          size="small"
           :disabled="dialogueStore.lines.length === 0"
           @click="exportScriptFile"
         >

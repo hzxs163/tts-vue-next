@@ -281,7 +281,7 @@ function selectDuckingStrength(strength: DuckingStrength) {
             color="primary"
             thumb-size="14"
             track-size="4"
-            prepend-icon="mdi-fade"
+            prepend-icon="mdi-volume-variant-off"
             hide-details
             density="compact"
             @update:model-value="bgmStore.setFadeOutSec($event)"

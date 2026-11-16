@@ -18,9 +18,13 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+.mdi-account-group-outline::before { content: "\F0B58"; }
+
 .mdi-account-voice::before { content: "\F05CB"; }
 
 .mdi-alert-circle::before { content: "\F0028"; }
+
+.mdi-alert-circle-outline::before { content: "\F05D6"; }
 
 .mdi-apple-keyboard-command::before { content: "\F0633"; }
 
@@ -42,6 +46,10 @@
 
 .mdi-backspace::before { content: "\F006E"; }
 
+.mdi-book-open-page-variant::before { content: "\F05DA"; }
+
+.mdi-book-open-page-variant-outline::before { content: "\F15D6"; }
+
 .mdi-cached::before { content: "\F00E8"; }
 
 .mdi-calendar::before { content: "\F00ED"; }
@@ -54,6 +62,10 @@
 
 .mdi-checkbox-marked::before { content: "\F0132"; }
 
+.mdi-checkbox-multiple-blank-outline::before { content: "\F0137"; }
+
+.mdi-checkbox-multiple-marked-outline::before { content: "\F0139"; }
+
 .mdi-chevron-down::before { content: "\F0140"; }
 
 .mdi-chevron-left::before { content: "\F0141"; }
@@ -63,6 +75,8 @@
 .mdi-chevron-up::before { content: "\F0143"; }
 
 .mdi-circle::before { content: "\F0765"; }
+
+.mdi-clock-outline::before { content: "\F0150"; }
 
 .mdi-close::before { content: "\F0156"; }
 
@@ -76,7 +90,15 @@
 
 .mdi-content-save::before { content: "\F0193"; }
 
+.mdi-counter::before { content: "\F0199"; }
+
 .mdi-delete-outline::before { content: "\F09E7"; }
+
+.mdi-download::before { content: "\F01DA"; }
+
+.mdi-drama-masks::before { content: "\F0D02"; }
+
+.mdi-eye-outline::before { content: "\F06D0"; }
 
 .mdi-eyedropper::before { content: "\F020A"; }
 
@@ -94,17 +116,25 @@
 
 .mdi-folder-outline::before { content: "\F0256"; }
 
+.mdi-format-title::before { content: "\F05F4"; }
+
 .mdi-fullscreen::before { content: "\F0293"; }
 
 .mdi-fullscreen-exit::before { content: "\F0294"; }
 
 .mdi-github::before { content: "\F02A4"; }
 
+.mdi-import::before { content: "\F02FA"; }
+
 .mdi-information::before { content: "\F02FC"; }
+
+.mdi-information-outline::before { content: "\F02FD"; }
 
 .mdi-keyboard-return::before { content: "\F0311"; }
 
 .mdi-keyboard-space::before { content: "\F1050"; }
+
+.mdi-lightbulb-on-outline::before { content: "\F06E9"; }
 
 .mdi-magnify::before { content: "\F0349"; }
 
@@ -118,17 +148,29 @@
 
 .mdi-minus-box::before { content: "\F0375"; }
 
+.mdi-music::before { content: "\F075A"; }
+
+.mdi-music-box-outline::before { content: "\F0385"; }
+
+.mdi-music-circle::before { content: "\F0386"; }
+
+.mdi-music-note::before { content: "\F0387"; }
+
 .mdi-page-first::before { content: "\F0600"; }
 
 .mdi-page-last::before { content: "\F0601"; }
 
 .mdi-palette::before { content: "\F03D8"; }
 
+.mdi-palette-swatch-outline::before { content: "\F135C"; }
+
 .mdi-paperclip::before { content: "\F03E2"; }
 
 .mdi-pause::before { content: "\F03E4"; }
 
 .mdi-pencil::before { content: "\F03EB"; }
+
+.mdi-pencil-outline::before { content: "\F0CB6"; }
 
 .mdi-play::before { content: "\F040A"; }
 
@@ -140,6 +182,10 @@
 
 .mdi-refresh::before { content: "\F0450"; }
 
+.mdi-regex::before { content: "\F0451"; }
+
+.mdi-script-text-outline::before { content: "\F0BC3"; }
+
 .mdi-star::before { content: "\F04CE"; }
 
 .mdi-star-half-full::before { content: "\F04D0"; }
@@ -148,7 +194,11 @@
 
 .mdi-stop::before { content: "\F04DB"; }
 
+.mdi-subtitles-outline::before { content: "\F0A17"; }
+
 .mdi-svg::before { content: "\F0721"; }
+
+.mdi-swap-horizontal::before { content: "\F04E1"; }
 
 .mdi-text-box-outline::before { content: "\F09ED"; }
 
@@ -167,6 +217,8 @@
 .mdi-volume-medium::before { content: "\F0580"; }
 
 .mdi-volume-variant-off::before { content: "\F0E08"; }
+
+.mdi-waveform::before { content: "\F147D"; }
 
 .mdi-weather-night::before { content: "\F0594"; }
 
