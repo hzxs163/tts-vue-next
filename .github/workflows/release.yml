@@ -32,7 +32,9 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: latest
+          # Pinned instead of "latest": a new pnpm major can change the
+          # lockfile format, which would break the release build.
+          version: 10.6.3
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -63,7 +65,11 @@ jobs:
             libgtk-3-dev
 
       - name: Install frontend dependencies
-        run: pnpm install
+        # The release artifact has to be built from exactly the dependency
+        # tree that is committed and that CI verified. A plain install would
+        # resolve fresh versions and could ship something different from
+        # what was tested.
+        run: pnpm install --frozen-lockfile
 
       - name: Build Tauri app and upload to release draft
         uses: tauri-apps/tauri-action@v0
