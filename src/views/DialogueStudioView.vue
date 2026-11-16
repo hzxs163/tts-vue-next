@@ -2,6 +2,7 @@
 import { computed, ref } from "vue";
 import { save } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
+import { useI18n } from "vue-i18n";
 import { useMessage } from "vuetify-message-vue3";
 import type { DialogueRole } from "../types";
 import { DEFAULT_CAST_PRESETS } from "../constants/dialoguePresets";
@@ -10,6 +11,7 @@ import { useVoicesStore } from "../stores/voices";
 import { useSettingsStore } from "../stores/settings";
 import { useBgmStore } from "../stores/bgm";
 import { saveAudioBytes } from "../utils/saveAudio";
+import { formatScript } from "../utils/dialogueParser";
 import BgmConfigCard from "../components/common/BgmConfigCard.vue";
 
 const dialogueStore = useDialogueStore();
@@ -17,6 +19,7 @@ const voicesStore = useVoicesStore();
 const settingsStore = useSettingsStore();
 const bgmStore = useBgmStore();
 const message = useMessage();
+const { t } = useI18n();
 
 // Active Tab: "script" | "cast" | "bgm"
 const activeTab = ref<"script" | "cast" | "bgm">("script");
@@ -89,7 +92,7 @@ function getRoleById(roleId: string): DialogueRole {
     dialogueStore.roles.find((r) => r.id === roleId) ||
     dialogueStore.roles[0] || {
       id: "unknown",
-      name: "未知",
+      name: t("dialogue.cast.unknownRole"),
       voice: "",
       rate: 0,
       pitch: 0,
@@ -128,7 +131,7 @@ function openEditRoleDialog(role: DialogueRole) {
 function saveRole() {
   const name = roleFormName.value.trim();
   if (!name) {
-    message.error("请输入角色姓名");
+    message.error(t("dialogue.cast.roleNameRequired"));
     return;
   }
 
@@ -159,7 +162,7 @@ function saveRole() {
 
 function deleteRole(roleId: string) {
   if (dialogueStore.roles.length <= 1) {
-    message.warning("至少保留一位角色");
+    message.warning(t("dialogue.cast.minimumRole"));
     return;
   }
   dialogueStore.removeRole(roleId);
@@ -167,15 +170,20 @@ function deleteRole(roleId: string) {
 
 function confirmImportScript() {
   if (!importText.value.trim()) {
-    message.warning("请输入台本或小说文本");
+    message.warning(t("dialogue.script.importRequired"));
     return;
   }
 
-  dialogueStore.parseScriptText(importText.value, importMode.value);
+  const result = dialogueStore.parseScriptText(importText.value, importMode.value);
+  if (!result.ok) {
+    message.error(t("dialogue.script.importEmpty"));
+    return;
+  }
+
   showImportDialog.value = false;
   importText.value = "";
   activeTab.value = "script";
-  message.success(`成功导入 ${dialogueStore.lines.length} 句对白！`);
+  message.success(t("dialogue.script.importSuccess", { count: result.count }));
 }
 
 async function exportAudioFile() {
@@ -186,7 +194,7 @@ async function exportAudioFile() {
   try {
     const ext = settingsStore.outputFormat;
     const filePath = await save({
-      defaultPath: `多角色广播剧_${Date.now()}.${ext}`,
+      defaultPath: `${t("dialogue.actions.defaultFileNameBase")}_${Date.now()}.${ext}`,
       filters: [{ name: "Audio", extensions: [ext] }],
     });
 
@@ -216,32 +224,67 @@ async function exportAudioFile() {
       throw new Error(cleanupError);
     }
 
-    message.success(`音频文件已成功保存到：${filePath}`);
+    message.success(t("dialogue.actions.successExport", { path: filePath }));
   } catch (err) {
-    message.error(`保存失败：${err instanceof Error ? err.message : String(err)}`);
+    message.error(
+      t("dialogue.actions.synthesisFailed", {
+        message: err instanceof Error ? err.message : String(err),
+      }),
+    );
   }
 }
 
-async function exportSubtitlesFile() {
-  const srt = dialogueStore.subtitles?.srt;
-  if (!srt) {
+async function exportScriptFile() {
+  if (dialogueStore.lines.length === 0) {
     return;
   }
 
   try {
     const filePath = await save({
-      defaultPath: `多角色广播剧_${Date.now()}.srt`,
-      filters: [{ name: "Subtitles", extensions: ["srt"] }],
+      defaultPath: `${t("dialogue.actions.defaultFileNameBase")}.txt`,
+      filters: [{ name: "Text", extensions: ["txt"] }],
     });
 
     if (!filePath) {
       return;
     }
 
-    await invoke("write_text_file", { path: filePath, content: srt });
-    message.success(`字幕文件已成功保存到：${filePath}`);
+    const content = formatScript(dialogueStore.lines, dialogueStore.roles);
+    await invoke("write_text_file", { path: filePath, content });
+    message.success(t("dialogue.actions.successExport", { path: filePath }));
   } catch (err) {
-    message.error(`保存失败：${err instanceof Error ? err.message : String(err)}`);
+    message.error(
+      t("dialogue.actions.synthesisFailed", {
+        message: err instanceof Error ? err.message : String(err),
+      }),
+    );
+  }
+}
+
+async function exportSubtitlesFile(format: "srt" | "vtt" = "srt") {
+  const content = format === "vtt" ? dialogueStore.subtitles?.vtt : dialogueStore.subtitles?.srt;
+  if (!content) {
+    return;
+  }
+
+  try {
+    const filePath = await save({
+      defaultPath: `${t("dialogue.actions.defaultFileNameBase")}_${Date.now()}.${format}`,
+      filters: [{ name: "Subtitles", extensions: [format] }],
+    });
+
+    if (!filePath) {
+      return;
+    }
+
+    await invoke("write_text_file", { path: filePath, content });
+    message.success(t("dialogue.actions.successExport", { path: filePath }));
+  } catch (err) {
+    message.error(
+      t("dialogue.actions.synthesisFailed", {
+        message: err instanceof Error ? err.message : String(err),
+      }),
+    );
   }
 }
 </script>
@@ -259,8 +302,12 @@ async function exportSubtitlesFile() {
             <div class="d-flex align-center ga-2">
               <span class="text-subtitle-1 font-weight-bold">{{ $t("dialogue.hero.title") }}</span>
               <v-chip size="x-small" color="primary" variant="tonal" class="font-weight-medium">
-                {{ dialogueStore.lines.length }} 句台词 · {{ dialogueStore.roles.length }} 位角色 ·
-                约 {{ totalChars }} 字
+                {{
+                  $t("dialogue.script.lineCount", {
+                    lines: dialogueStore.lines.length,
+                    chars: totalChars,
+                  })
+                }}
               </v-chip>
             </div>
             <div class="text-caption text-medium-emphasis">
@@ -309,7 +356,17 @@ async function exportSubtitlesFile() {
             :disabled="dialogueStore.lines.length === 0"
             @click="dialogueStore.clearLines()"
           >
-            清空台本
+            {{ $t("dialogue.script.clearScript") }}
+          </v-btn>
+
+          <v-btn
+            variant="outlined"
+            size="small"
+            prepend-icon="mdi-file-document-outline"
+            :disabled="dialogueStore.lines.length === 0"
+            @click="exportScriptFile"
+          >
+            {{ $t("dialogue.actions.exportScript") }}
           </v-btn>
 
           <v-btn
@@ -358,6 +415,18 @@ async function exportSubtitlesFile() {
           : {{ dialogueStore.progress.lineText }}
         </span>
       </div>
+
+      <!-- Failed Lines Alert -->
+      <v-alert
+        v-if="dialogueStore.failedLineIds.length > 0"
+        type="warning"
+        variant="tonal"
+        density="compact"
+        class="mt-3"
+        closable
+      >
+        {{ $t("dialogue.actions.failedLines", { count: dialogueStore.failedLineIds.length }) }}
+      </v-alert>
     </v-card>
 
     <!-- Studio Tab Container -->
@@ -410,7 +479,9 @@ async function exportSubtitlesFile() {
             </v-btn>
 
             <!-- Quick Append for Specific Role -->
-            <span class="text-caption text-medium-emphasis ml-2">快速追加台词：</span>
+            <span class="text-caption text-medium-emphasis ml-2">
+              {{ $t("dialogue.script.quickAppend") }}
+            </span>
             <v-chip
               v-for="role in dialogueStore.roles"
               :key="role.id"
@@ -428,9 +499,9 @@ async function exportSubtitlesFile() {
           </div>
 
           <div class="d-flex align-center ga-2">
-            <span class="text-caption text-medium-emphasis"
-              >默认停顿：{{ dialogueStore.defaultPauseMs }}ms</span
-            >
+            <span class="text-caption text-medium-emphasis">{{
+              $t("dialogue.script.defaultPause", { ms: dialogueStore.defaultPauseMs })
+            }}</span>
           </div>
         </div>
 
@@ -511,7 +582,7 @@ async function exportSubtitlesFile() {
                       <v-list-item
                         v-for="ms in pauseOptions"
                         :key="ms"
-                        :title="`${ms} 毫秒`"
+                        :title="$t('dialogue.script.milliseconds', { ms })"
                         @click="dialogueStore.updateLine(line.id, { pauseAfterMs: ms })"
                       />
                     </v-list>
@@ -614,9 +685,17 @@ async function exportSubtitlesFile() {
               variant="outlined"
               size="small"
               prepend-icon="mdi-subtitles-outline"
-              @click="exportSubtitlesFile"
+              @click="exportSubtitlesFile('srt')"
             >
               {{ $t("dialogue.actions.exportSubtitles") }}
+            </v-btn>
+            <v-btn
+              variant="text"
+              size="small"
+              prepend-icon="mdi-subtitles-outline"
+              @click="exportSubtitlesFile('vtt')"
+            >
+              {{ $t("dialogue.actions.exportVtt") }}
             </v-btn>
           </div>
         </div>
@@ -634,7 +713,7 @@ async function exportSubtitlesFile() {
               </span>
             </div>
             <div class="text-caption text-medium-emphasis">
-              为剧本中的每位登场人物分配专属声音、语调与情感色彩。
+              {{ $t("dialogue.cast.description") }}
             </div>
           </div>
 
@@ -736,7 +815,7 @@ async function exportSubtitlesFile() {
                       activeTab = 'script';
                     "
                   >
-                    撰写台词
+                    {{ $t("dialogue.cast.writeLines") }}
                   </v-btn>
                   <v-btn
                     size="x-small"
@@ -744,7 +823,7 @@ async function exportSubtitlesFile() {
                     prepend-icon="mdi-tune"
                     @click="openEditRoleDialog(role)"
                   >
-                    配置
+                    {{ $t("dialogue.cast.configure") }}
                   </v-btn>
                 </v-card-actions>
               </v-card>
@@ -762,7 +841,9 @@ async function exportSubtitlesFile() {
                   <v-icon size="24">mdi-plus</v-icon>
                 </v-avatar>
                 <div class="text-body-2 font-weight-bold">{{ $t("dialogue.cast.addRole") }}</div>
-                <div class="text-caption text-medium-emphasis">创建新登场人物</div>
+                <div class="text-caption text-medium-emphasis">
+                  {{ $t("dialogue.cast.createNewCharacter") }}
+                </div>
               </v-card>
             </v-col>
           </v-row>
@@ -778,18 +859,14 @@ async function exportSubtitlesFile() {
           <v-card variant="outlined" rounded="lg" class="pa-4 tips-card">
             <div class="d-flex align-center ga-2 mb-2">
               <v-icon color="primary" size="20">mdi-lightbulb-on-outline</v-icon>
-              <span class="text-subtitle-2 font-weight-bold">广播剧混音与人声避让技巧</span>
+              <span class="text-subtitle-2 font-weight-bold">{{
+                $t("dialogue.bgm.tipsTitle")
+              }}</span>
             </div>
             <ul class="text-caption text-medium-emphasis pl-4" style="line-height: 1.8">
-              <li>推荐选用 44.1kHz 的立体声轻音乐、OST 或环境音效作为背景伴奏。</li>
-              <li>
-                <strong>人声智能避让（Audio Ducking）</strong
-                >：说话时自动以侧链压缩压低伴奏音量（如标准
-                -12dB），在对白停顿与全剧结尾时平滑回升，保证台词清晰自然。
-              </li>
-              <li>
-                在「剧本台本工作台」点击「合成广播剧音频」后，点击「导出音频」将全自动完成混音并保存。
-              </li>
+              <li>{{ $t("dialogue.bgm.tipsFormat") }}</li>
+              <li>{{ $t("dialogue.bgm.tipsDucking") }}</li>
+              <li>{{ $t("dialogue.bgm.tipsExport") }}</li>
             </ul>
           </v-card>
         </div>

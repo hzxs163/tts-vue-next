@@ -82,6 +82,13 @@ function clearText() {
           >
             2s
           </v-btn>
+          <v-tooltip :text="$t('tts.textInput.pauseTagHint')" location="bottom">
+            <template #activator="{ props: tooltipProps }">
+              <v-icon v-bind="tooltipProps" size="14" color="medium-emphasis">
+                mdi-information-outline
+              </v-icon>
+            </template>
+          </v-tooltip>
         </div>
       </template>
     </v-card-item>

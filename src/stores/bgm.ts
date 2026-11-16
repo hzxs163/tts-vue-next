@@ -1,7 +1,6 @@
 import { defineStore } from "pinia";
-import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import type { BgmMixParams, BgmSettings, DuckingStrength } from "../types";
+import type { BgmSettings, DuckingStrength } from "../types";
 
 export const BGM_STORAGE_KEY = "tts_bgm_settings_v1";
 
@@ -40,9 +39,9 @@ function loadSettings(): BgmSettings {
 }
 
 export const useBgmStore = defineStore("bgm", {
-  state: (): BgmSettings & { isMixing: boolean } => ({
+  state: (): BgmSettings & { customDucking: boolean } => ({
     ...loadSettings(),
-    isMixing: false,
+    customDucking: false,
   }),
 
   getters: {
@@ -122,6 +121,7 @@ export const useBgmStore = defineStore("bgm", {
 
     setDuckingStrength(strength: DuckingStrength) {
       this.duckingStrength = strength;
+      this.customDucking = false;
       const preset = DUCKING_PRESETS[strength];
       if (preset) {
         this.duckingRatio = preset.ratio;
@@ -131,6 +131,7 @@ export const useBgmStore = defineStore("bgm", {
     },
 
     setCustomDucking(ratio: number, threshold: number) {
+      this.customDucking = true;
       this.duckingRatio = Math.max(1.5, Math.min(20.0, ratio));
       this.duckingThreshold = Math.max(0.01, Math.min(0.5, threshold));
       this.saveSettings();
@@ -139,31 +140,6 @@ export const useBgmStore = defineStore("bgm", {
     setFadeOutSec(sec: number) {
       this.fadeOutSec = Math.max(0, Math.min(5.0, sec));
       this.saveSettings();
-    },
-
-    async mixBgm(vocalPath: string, outputPath: string, format?: string): Promise<void> {
-      if (!this.bgmPath) {
-        throw new Error("No BGM file selected");
-      }
-
-      this.isMixing = true;
-      try {
-        const fmt = (format || outputPath.split(".").pop() || "mp3").toLowerCase();
-        const params: BgmMixParams = {
-          vocal_path: vocalPath,
-          bgm_path: this.bgmPath,
-          output_path: outputPath,
-          bgm_volume: this.bgmVolume,
-          enable_ducking: this.enableDucking,
-          ducking_ratio: this.duckingRatio,
-          ducking_threshold: this.duckingThreshold,
-          fade_out_sec: this.fadeOutSec,
-          format: fmt,
-        };
-        await invoke("mix_bgm", { params });
-      } finally {
-        this.isMixing = false;
-      }
     },
   },
 });

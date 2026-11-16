@@ -25,10 +25,24 @@ const volumePercent = computed({
   },
 });
 
-const duckingStrengths: Array<{ value: DuckingStrength; label: string; desc: string }> = [
-  { value: "gentle", label: t("bgm.strengths.gentle"), desc: "-6dB" },
-  { value: "medium", label: t("bgm.strengths.medium"), desc: "-12dB" },
-  { value: "strong", label: t("bgm.strengths.strong"), desc: "-18dB" },
+const duckingRatio = computed({
+  get: () => bgmStore.duckingRatio,
+  set: (val: number) => {
+    bgmStore.setCustomDucking(val, bgmStore.duckingThreshold);
+  },
+});
+
+const duckingThreshold = computed({
+  get: () => bgmStore.duckingThreshold,
+  set: (val: number) => {
+    bgmStore.setCustomDucking(bgmStore.duckingRatio, val);
+  },
+});
+
+const duckingStrengths: Array<{ value: DuckingStrength; label: string }> = [
+  { value: "gentle", label: t("bgm.strengths.gentle") },
+  { value: "medium", label: t("bgm.strengths.medium") },
+  { value: "strong", label: t("bgm.strengths.strong") },
 ];
 
 function selectDuckingStrength(strength: DuckingStrength) {
@@ -157,7 +171,7 @@ function selectDuckingStrength(strength: DuckingStrength) {
                 {{ t("bgm.duckingStrength") }}
               </div>
               <v-btn-toggle
-                v-model="bgmStore.duckingStrength"
+                :model-value="bgmStore.customDucking ? 'custom' : bgmStore.duckingStrength"
                 mandatory
                 color="primary"
                 variant="outlined"
@@ -174,7 +188,58 @@ function selectDuckingStrength(strength: DuckingStrength) {
                 >
                   {{ item.label }}
                 </v-btn>
+                <v-btn
+                  value="custom"
+                  class="flex-1-1 text-caption"
+                  @click="
+                    bgmStore.setCustomDucking(bgmStore.duckingRatio, bgmStore.duckingThreshold)
+                  "
+                >
+                  {{ t("bgm.customDucking") }}
+                </v-btn>
               </v-btn-toggle>
+
+              <div v-if="bgmStore.customDucking" class="mt-3">
+                <div class="d-flex align-center justify-space-between mb-1">
+                  <span class="text-caption text-medium-emphasis">
+                    {{ t("bgm.duckingRatio") }}
+                  </span>
+                  <span class="text-caption font-weight-bold">
+                    {{ duckingRatio.toFixed(1) }} : 1
+                  </span>
+                </div>
+                <v-slider
+                  v-model="duckingRatio"
+                  :min="1.5"
+                  :max="20"
+                  :step="0.5"
+                  color="primary"
+                  thumb-size="14"
+                  track-size="4"
+                  hide-details
+                  density="compact"
+                />
+
+                <div class="d-flex align-center justify-space-between mb-1 mt-2">
+                  <span class="text-caption text-medium-emphasis">
+                    {{ t("bgm.duckingThreshold") }}
+                  </span>
+                  <span class="text-caption font-weight-bold">
+                    {{ duckingThreshold.toFixed(3) }}
+                  </span>
+                </div>
+                <v-slider
+                  v-model="duckingThreshold"
+                  :min="0.01"
+                  :max="0.5"
+                  :step="0.01"
+                  color="primary"
+                  thumb-size="14"
+                  track-size="4"
+                  hide-details
+                  density="compact"
+                />
+              </div>
             </div>
           </v-expand-transition>
         </div>
@@ -186,7 +251,7 @@ function selectDuckingStrength(strength: DuckingStrength) {
             <span class="text-caption font-weight-bold">{{ bgmStore.fadeOutSec }}s</span>
           </div>
           <v-slider
-            v-model="bgmStore.fadeOutSec"
+            :model-value="bgmStore.fadeOutSec"
             :min="0"
             :max="5"
             :step="0.5"
@@ -198,6 +263,9 @@ function selectDuckingStrength(strength: DuckingStrength) {
             density="compact"
             @update:model-value="bgmStore.setFadeOutSec($event)"
           />
+          <div class="text-caption text-medium-emphasis mt-1">
+            {{ t("bgm.fadeOutHint") }}
+          </div>
         </div>
       </div>
     </v-expand-transition>

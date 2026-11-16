@@ -70,34 +70,43 @@ describe("useBgmStore", () => {
     expect(store.isConfigured).toBe(false);
   });
 
-  it("mixes BGM audio via Tauri command", async () => {
+  it("supports custom ducking parameters", () => {
     const store = useBgmStore();
-    store.setBgmFile("C:\\bgm.mp3");
-    store.setBgmVolume(0.4);
-    invokeMock.mockResolvedValueOnce(undefined);
+    expect(store.customDucking).toBe(false);
 
-    await store.mixBgm("C:\\vocal.mp3", "C:\\out.mp3", "mp3");
+    store.setCustomDucking(6.5, 0.25);
+    expect(store.customDucking).toBe(true);
+    expect(store.duckingRatio).toBe(6.5);
+    expect(store.duckingThreshold).toBe(0.25);
 
-    expect(invokeMock).toHaveBeenCalledWith("mix_bgm", {
-      params: {
-        vocal_path: "C:\\vocal.mp3",
-        bgm_path: "C:\\bgm.mp3",
-        output_path: "C:\\out.mp3",
-        bgm_volume: 0.4,
-        enable_ducking: true,
-        ducking_ratio: 4.0,
-        ducking_threshold: 0.08,
-        fade_out_sec: 2.0,
-        format: "mp3",
-      },
-    });
+    // Switching back to a preset leaves the custom mode.
+    store.setDuckingStrength("gentle");
+    expect(store.customDucking).toBe(false);
+    expect(store.duckingRatio).toBe(DUCKING_PRESETS.gentle.ratio);
   });
 
-  it("throws error if mixing without selected BGM file", async () => {
+  it("clamps custom ducking parameters to the supported range", () => {
     const store = useBgmStore();
-    store.clearBgm();
-    await expect(store.mixBgm("C:\\vocal.mp3", "C:\\out.mp3")).rejects.toThrow(
-      "No BGM file selected",
-    );
+
+    store.setCustomDucking(0.2, 9);
+    expect(store.duckingRatio).toBe(1.5);
+    expect(store.duckingThreshold).toBe(0.5);
+
+    store.setCustomDucking(99, 0);
+    expect(store.duckingRatio).toBe(20);
+    expect(store.duckingThreshold).toBe(0.01);
+  });
+
+  it("clamps the fade-out duration to the supported range", () => {
+    const store = useBgmStore();
+
+    store.setFadeOutSec(-3);
+    expect(store.fadeOutSec).toBe(0);
+
+    store.setFadeOutSec(99);
+    expect(store.fadeOutSec).toBe(5);
+
+    store.setFadeOutSec(2.5);
+    expect(store.fadeOutSec).toBe(2.5);
   });
 });
