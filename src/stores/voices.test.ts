@@ -208,4 +208,24 @@ describe("useVoicesStore", () => {
     expect(store.cacheSavedAt).toBeTypeOf("number");
     expect(store.error).toContain("network unavailable");
   });
+
+  test("toggles favorites and sorts favorites to top of filtered voices", async () => {
+    invokeMock.mockResolvedValue(voicesFixture);
+    const { useVoicesStore } = await import("./voices");
+    const store = useVoicesStore();
+
+    await store.fetchVoices();
+    expect(store.isFavorite("zh-CN-YunxiNeural")).toBe(false);
+
+    store.toggleFavorite("zh-CN-YunxiNeural");
+    expect(store.isFavorite("zh-CN-YunxiNeural")).toBe(true);
+    expect(store.favorites).toEqual(["zh-CN-YunxiNeural"]);
+
+    // Yunxi should now be first in filteredVoices because it is favorited
+    expect(store.filteredVoices[0]?.ShortName).toBe("zh-CN-YunxiNeural");
+
+    store.toggleFavorite("zh-CN-YunxiNeural");
+    expect(store.isFavorite("zh-CN-YunxiNeural")).toBe(false);
+    expect(store.favorites).toEqual([]);
+  });
 });

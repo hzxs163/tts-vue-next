@@ -147,6 +147,25 @@ describe("useTtsStore", () => {
     expect(Array.from(new Uint8Array(await blob.arrayBuffer()))).toEqual([1, 2, 3]);
   });
 
+  test("applies dictionary rules to synthesize text without mutating the store text", async () => {
+    invokeMock.mockResolvedValue(new Uint8Array([1, 2, 3]).buffer);
+    const { useTtsStore } = await import("./tts");
+    const store = useTtsStore();
+
+    store.setText("重新启动银行系统");
+    await store.convert();
+
+    expect(store.text).toBe("重新启动银行系统");
+    expect(invokeMock).toHaveBeenCalledWith(
+      "tts_convert",
+      expect.objectContaining({
+        params: expect.objectContaining({
+          text: "从新启动银航系统",
+        }),
+      }),
+    );
+  });
+
   test("treats a cancelled conversion as a silent reset", async () => {
     invokeMock.mockRejectedValue(new Error("Cancelled"));
     const { useTtsStore } = await import("./tts");
@@ -310,5 +329,33 @@ describe("useTtsStore", () => {
 
     store.applyProgress({ taskId: "task-123", completed: 4, total: 4 });
     expect(store.progress).toBe(99);
+  });
+
+  test("applies subtitles only for the active task", async () => {
+    const { useTtsStore } = await import("./tts");
+    const store = useTtsStore();
+
+    store.$patch({
+      converting: true,
+      currentTaskId: "task-sub-1",
+      subtitles: null,
+    });
+
+    store.applySubtitles({
+      taskId: "different-task",
+      srt: "1\n00:00:01,000 --> 00:00:02,000\nOther\n\n",
+      vtt: "WEBVTT\n\n",
+      cues: [],
+    });
+    expect(store.subtitles).toBeNull();
+
+    store.applySubtitles({
+      taskId: "task-sub-1",
+      srt: "1\n00:00:01,000 --> 00:00:02,000\nHello\n\n",
+      vtt: "WEBVTT\n\n1\n00:00:01.000 --> 00:00:02.000\nHello\n\n",
+      cues: [{ offset: 0, duration: 10000000, startMs: 0, endMs: 1000, text: "Hello" }],
+    });
+    expect(store.subtitles?.srt).toContain("Hello");
+    expect(store.subtitles?.cues).toHaveLength(1);
   });
 });

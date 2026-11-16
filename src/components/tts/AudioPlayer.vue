@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { onUnmounted, ref, watch } from "vue";
+import { computed, onUnmounted, ref, watch } from "vue";
+import { invoke } from "@tauri-apps/api/core";
 import { useI18n } from "vue-i18n";
 import { useMessage } from "vuetify-message-vue3";
 import { useSettingsStore } from "../../stores/settings";
 import { useTtsStore } from "../../stores/tts";
+import { buildDefaultFileName } from "../../utils/fileName";
 import { saveAudioBytes } from "../../utils/saveAudio";
 import { toErrorMessage } from "../../utils/ttsErrors";
 
@@ -17,6 +19,17 @@ const isPlaying = ref(false);
 const currentTime = ref(0);
 const duration = ref(0);
 const playerVolume = ref(100);
+
+const activeSubtitle = computed(() => {
+  if (!ttsStore.subtitles || ttsStore.subtitles.cues.length === 0) {
+    return "";
+  }
+  const currentMs = currentTime.value * 1000;
+  const activeCue = ttsStore.subtitles.cues.find(
+    (cue) => cue.startMs <= currentMs && currentMs <= cue.endMs + 350,
+  );
+  return activeCue?.text || "";
+});
 
 function formatTime(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) {
@@ -96,8 +109,15 @@ async function saveAudio() {
   try {
     const { save } = await import("@tauri-apps/plugin-dialog");
     const ext = settingsStore.outputFormat;
+    const defaultBase = t("tts.audioPlayer.defaultFileNameBase");
+    const defaultFileName = buildDefaultFileName({
+      text: ttsStore.text,
+      pattern: settingsStore.fileNamePattern,
+      ext,
+      defaultBase,
+    });
     const filePath = await save({
-      defaultPath: t("tts.audioPlayer.defaultFileName", { ext }),
+      defaultPath: defaultFileName,
       filters: [{ name: t("tts.audioPlayer.saveFilterName"), extensions: [ext] }],
     });
 
@@ -110,9 +130,54 @@ async function saveAudio() {
       throw new Error(cleanupError);
     }
 
+    if (settingsStore.exportSubtitles && ttsStore.subtitles?.srt) {
+      const srtPath = filePath.replace(/\.[^.]+$/, "") + ".srt";
+      try {
+        await invoke("write_text_file", { path: srtPath, content: ttsStore.subtitles.srt });
+      } catch {
+        // Subtitle writing is best-effort alongside audio
+      }
+    }
+
     message.success(t("tts.audioPlayer.saved", { path: filePath }));
   } catch (error) {
     // GlobalAlerts is the single error surface; avoid a duplicate toast.
+    ttsStore.$patch({ error: toErrorMessage(error) });
+  }
+}
+
+async function saveSubtitles() {
+  const srt = ttsStore.subtitles?.srt;
+  if (!srt) {
+    return;
+  }
+
+  ttsStore.$patch({ error: null });
+
+  try {
+    const { save } = await import("@tauri-apps/plugin-dialog");
+    const defaultBase = t("tts.audioPlayer.defaultSubtitleFileNameBase");
+    const defaultFileName = buildDefaultFileName({
+      text: ttsStore.text,
+      pattern: settingsStore.fileNamePattern,
+      ext: "srt",
+      defaultBase,
+    });
+    const filePath = await save({
+      defaultPath: defaultFileName,
+      filters: [{ name: "Subtitles", extensions: ["srt", "vtt"] }],
+    });
+
+    if (!filePath) {
+      return;
+    }
+
+    const content = filePath.toLowerCase().endsWith(".vtt")
+      ? (ttsStore.subtitles?.vtt ?? srt)
+      : srt;
+    await invoke("write_text_file", { path: filePath, content });
+    message.success(t("tts.audioPlayer.saved", { path: filePath }));
+  } catch (error) {
     ttsStore.$patch({ error: toErrorMessage(error) });
   }
 }
@@ -169,6 +234,11 @@ onUnmounted(() => {
       @ended="onEnded"
     />
 
+    <div v-if="activeSubtitle" class="audio-player__subtitle-banner text-caption">
+      <v-icon size="x-small" color="primary" class="mr-1">mdi-text-box-outline</v-icon>
+      <span class="audio-player__subtitle-text">{{ activeSubtitle }}</span>
+    </div>
+
     <div class="audio-player__inner">
       <div class="audio-player__label text-caption font-weight-medium">
         {{ $t("tts.audioPlayer.title") }}
@@ -212,15 +282,28 @@ onUnmounted(() => {
         />
       </div>
 
-      <v-btn
-        icon
-        variant="text"
-        :aria-label="$t('tts.audioPlayer.saveGeneratedAudio')"
-        :disabled="!ttsStore.audioBytes"
-        @click="saveAudio"
-      >
-        <v-icon>mdi-content-save</v-icon>
-      </v-btn>
+      <div class="d-flex align-center ga-1">
+        <v-btn
+          v-if="ttsStore.subtitles?.srt"
+          icon
+          variant="text"
+          :aria-label="$t('tts.audioPlayer.saveSubtitles')"
+          :title="$t('tts.audioPlayer.saveSubtitles')"
+          @click="saveSubtitles"
+        >
+          <v-icon>mdi-file-document-outline</v-icon>
+        </v-btn>
+
+        <v-btn
+          icon
+          variant="text"
+          :aria-label="$t('tts.audioPlayer.saveGeneratedAudio')"
+          :disabled="!ttsStore.audioBytes"
+          @click="saveAudio"
+        >
+          <v-icon>mdi-content-save</v-icon>
+        </v-btn>
+      </div>
     </div>
   </v-card>
 </template>
@@ -233,6 +316,21 @@ onUnmounted(() => {
   border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
   background: rgba(var(--v-theme-surface), 0.92);
   backdrop-filter: blur(16px);
+}
+
+.audio-player__subtitle-banner {
+  padding: 4px 16px;
+  background: rgba(var(--v-theme-primary), 0.08);
+  border-bottom: 1px solid rgba(var(--v-border-color), 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgb(var(--v-theme-primary));
+  font-weight: 500;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .audio-player__inner {

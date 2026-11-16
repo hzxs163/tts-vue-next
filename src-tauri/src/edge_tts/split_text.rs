@@ -1,5 +1,8 @@
 use crate::edge_tts::constants::MAX_CHUNK_BYTES;
-use crate::edge_tts::ssml::{remove_incompatible_characters, xml_escape};
+use crate::edge_tts::ssml::{
+    parse_break_duration_ms, remove_incompatible_characters, xml_escape, BREAK_TAG_REGEX,
+};
+use crate::edge_tts::types::SynthesisChunk;
 
 pub fn split_text_by_byte_length(text: &str) -> Vec<String> {
     let cleaned = remove_incompatible_characters(text);
@@ -43,6 +46,12 @@ pub fn split_text_by_byte_length(text: &str) -> Vec<String> {
                 actual_end = start + amp_pos;
             }
         }
+        if let Some(tag_pos) = escaped[start..actual_end].rfind('<') {
+            let after_tag = &escaped[start + tag_pos..actual_end];
+            if !after_tag.contains('>') {
+                actual_end = start + tag_pos;
+            }
+        }
 
         if actual_end <= start {
             actual_end = end;
@@ -54,6 +63,50 @@ pub fn split_text_by_byte_length(text: &str) -> Vec<String> {
         }
 
         start = actual_end;
+    }
+
+    chunks
+}
+
+/// Plans synthesis chunks by separating pause/break tags from speech text.
+/// Break tags become `SynthesisChunk::Silence(millis)`, while text segments
+/// are split into bounded chunks via `split_text_by_byte_length`.
+pub fn plan_synthesis_chunks(text: &str) -> Vec<SynthesisChunk> {
+    let cleaned = remove_incompatible_characters(text);
+    let mut chunks = Vec::new();
+    let mut last_end = 0;
+
+    for caps in BREAK_TAG_REGEX.find_iter(&cleaned) {
+        let match_start = caps.start();
+        let match_end = caps.end();
+
+        if match_start > last_end {
+            let seg = &cleaned[last_end..match_start];
+            for sub in split_text_by_byte_length(seg) {
+                chunks.push(SynthesisChunk::Text(sub));
+            }
+        }
+
+        let captures = BREAK_TAG_REGEX
+            .captures(&cleaned[match_start..match_end])
+            .unwrap();
+
+        if let Some(millis) = parse_break_duration_ms(&captures) {
+            chunks.push(SynthesisChunk::Silence(millis));
+        } else {
+            for sub in split_text_by_byte_length(&cleaned[match_start..match_end]) {
+                chunks.push(SynthesisChunk::Text(sub));
+            }
+        }
+
+        last_end = match_end;
+    }
+
+    if last_end < cleaned.len() {
+        let seg = &cleaned[last_end..];
+        for sub in split_text_by_byte_length(seg) {
+            chunks.push(SynthesisChunk::Text(sub));
+        }
     }
 
     chunks
@@ -162,5 +215,47 @@ mod tests {
             assert!(chunk.is_char_boundary(0));
             assert!(chunk.len() <= MAX_CHUNK_BYTES);
         }
+    }
+
+    #[test]
+    fn test_plan_synthesis_chunks_with_pause_tags() {
+        let text = "今天的天气[停顿 1s]确实不错啊";
+        let plan = plan_synthesis_chunks(text);
+        assert_eq!(
+            plan,
+            vec![
+                SynthesisChunk::Text("今天的天气".to_string()),
+                SynthesisChunk::Silence(1000),
+                SynthesisChunk::Text("确实不错啊".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_plan_synthesis_chunks_with_chinese_brackets() {
+        let text = "今天的天气【停顿 500ms】确实不错啊";
+        let plan = plan_synthesis_chunks(text);
+        assert_eq!(
+            plan,
+            vec![
+                SynthesisChunk::Text("今天的天气".to_string()),
+                SynthesisChunk::Silence(500),
+                SynthesisChunk::Text("确实不错啊".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_plan_synthesis_chunks_with_break_tags() {
+        let text = r#"Hello <break time="2s" /> World"#;
+        let plan = plan_synthesis_chunks(text);
+        assert_eq!(
+            plan,
+            vec![
+                SynthesisChunk::Text("Hello".to_string()),
+                SynthesisChunk::Silence(2000),
+                SynthesisChunk::Text("World".to_string()),
+            ]
+        );
     }
 }

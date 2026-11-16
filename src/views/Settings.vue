@@ -3,7 +3,7 @@ import { computed } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { useI18n } from "vue-i18n";
 import { useMessage } from "vuetify-message-vue3";
-import type { ConflictStrategy } from "../types";
+import type { ConflictStrategy, FileNamePattern } from "../types";
 import { useSettingsStore } from "../stores/settings";
 
 const settingsStore = useSettingsStore();
@@ -15,6 +15,13 @@ const formatOptions = computed(() => [
   { title: t("common.formats.wav"), value: "wav" },
   { title: t("common.formats.ogg"), value: "ogg" },
   { title: t("common.formats.flac"), value: "flac" },
+]);
+
+const fileNamePatternOptions = computed((): Array<{ title: string; value: FileNamePattern }> => [
+  { title: t("settings.fileNamePatterns.content"), value: "content" },
+  { title: t("settings.fileNamePatterns.timestamp"), value: "timestamp" },
+  { title: t("settings.fileNamePatterns.content_timestamp"), value: "content_timestamp" },
+  { title: t("settings.fileNamePatterns.default"), value: "default" },
 ]);
 
 const languageOptions = computed(() => [
@@ -95,6 +102,14 @@ async function selectSavePath() {
                 />
 
                 <v-select
+                  :model-value="settingsStore.fileNamePattern"
+                  :items="fileNamePatternOptions"
+                  density="comfortable"
+                  :label="$t('settings.fields.fileNamePattern')"
+                  @update:model-value="settingsStore.updateFileNamePattern"
+                />
+
+                <v-select
                   :model-value="settingsStore.language"
                   :items="languageOptions"
                   density="comfortable"
@@ -118,6 +133,19 @@ async function selectSavePath() {
                     color="primary"
                     hide-details
                     @update:model-value="(value) => settingsStore.updateAutoplay(Boolean(value))"
+                  />
+                </div>
+
+                <div class="settings-field settings-field--full">
+                  <v-switch
+                    :model-value="settingsStore.exportSubtitles"
+                    :label="$t('settings.fields.exportSubtitles')"
+                    density="comfortable"
+                    color="primary"
+                    hide-details
+                    @update:model-value="
+                      (value) => settingsStore.updateExportSubtitles(Boolean(value))
+                    "
                   />
                 </div>
               </div>

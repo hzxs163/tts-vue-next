@@ -17,6 +17,7 @@ interface VoicesState {
   cacheSavedAt: number | null;
   selectedLocale: string;
   selectedVoice: string;
+  favorites: string[];
 }
 
 function readVoiceCache(): VoiceCache | null {
@@ -106,6 +107,7 @@ export const useVoicesStore = defineStore("voices", {
     cacheSavedAt: null,
     selectedLocale: "zh-CN",
     selectedVoice: "zh-CN-XiaoxiaoNeural",
+    favorites: [],
   }),
 
   getters: {
@@ -114,7 +116,19 @@ export const useVoicesStore = defineStore("voices", {
     },
 
     filteredVoices(state): Voice[] {
-      return state.voices.filter((voice) => voice.Locale === state.selectedLocale);
+      const list = state.voices.filter((voice) => voice.Locale === state.selectedLocale);
+      return [...list].sort((a, b) => {
+        const aFav = state.favorites.includes(a.ShortName) ? 1 : 0;
+        const bFav = state.favorites.includes(b.ShortName) ? 1 : 0;
+        if (aFav !== bFav) {
+          return bFav - aFav;
+        }
+        return (a.FriendlyName || a.ShortName).localeCompare(b.FriendlyName || b.ShortName);
+      });
+    },
+
+    isFavorite(state) {
+      return (shortName: string): boolean => state.favorites.includes(shortName);
     },
 
     currentVoice(state): Voice | undefined {
@@ -191,9 +205,18 @@ export const useVoicesStore = defineStore("voices", {
         selectedVoice: shortName,
       });
     },
+
+    toggleFavorite(shortName: string) {
+      const isFav = this.favorites.includes(shortName);
+      const updated = isFav
+        ? this.favorites.filter((name) => name !== shortName)
+        : [...this.favorites, shortName];
+
+      this.$patch({ favorites: updated });
+    },
   },
 
   persist: {
-    pick: ["selectedLocale", "selectedVoice"],
+    pick: ["selectedLocale", "selectedVoice", "favorites"],
   },
 });

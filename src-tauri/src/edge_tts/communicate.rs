@@ -18,10 +18,10 @@ use crate::edge_tts::constants::{
 };
 use crate::edge_tts::drm::{adjust_clock_skew, generate_muid, generate_sec_ms_gec, js_date_string};
 use crate::edge_tts::errors::EdgeTTSError;
-use crate::edge_tts::split_text::split_text_by_byte_length;
-use crate::edge_tts::ssml::build_ssml;
-
-use crate::edge_tts::types::TTSConfig;
+use crate::edge_tts::split_text::plan_synthesis_chunks;
+use crate::edge_tts::ssml::{build_ssml, generate_silent_mp3};
+use crate::edge_tts::subtitles::{build_subtitle_track, parse_metadata_body, ticks_to_ms};
+use crate::edge_tts::types::{SubtitleCue, SubtitleTrack, SynthesisChunk, TTSConfig};
 
 type EdgeWebSocket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
@@ -65,7 +65,13 @@ impl Communicate {
         self
     }
 
+    #[allow(dead_code)]
     pub async fn stream_audio(&self) -> Result<Vec<u8>, EdgeTTSError> {
+        let (audio, _) = self.stream_audio_with_subtitles().await?;
+        Ok(audio)
+    }
+
+    pub async fn stream_audio_with_subtitles(&self) -> Result<(Vec<u8>, SubtitleTrack), EdgeTTSError> {
         self.stream_chunk_sequence_with_timeout(config::get().wss_url.as_str(), RECEIVE_TIMEOUT)
             .await
     }
@@ -76,76 +82,114 @@ impl Communicate {
         base_url: &str,
         receive_timeout: std::time::Duration,
     ) -> Result<Vec<u8>, EdgeTTSError> {
-        self.stream_chunk_sequence_with_timeout(base_url, receive_timeout)
-            .await
+        let (audio, _) = self
+            .stream_chunk_sequence_with_timeout(base_url, receive_timeout)
+            .await?;
+        Ok(audio)
     }
 
     async fn stream_chunk_sequence_with_timeout(
         &self,
         base_url: &str,
         receive_timeout: std::time::Duration,
-    ) -> Result<Vec<u8>, EdgeTTSError> {
+    ) -> Result<(Vec<u8>, SubtitleTrack), EdgeTTSError> {
         if *self.cancel_rx.borrow() {
             return Err(EdgeTTSError::Cancelled);
         }
 
-        let chunks = split_text_by_byte_length(&self.text);
-        if chunks.is_empty() {
+        let plan = plan_synthesis_chunks(&self.text);
+        if plan.is_empty() {
             return Err(EdgeTTSError::NoAudioReceived);
         }
 
-        let total = chunks.len();
+        let total = plan.len();
         let concurrency = self.chunk_concurrency.clamp(1, total);
         let completed = Arc::new(AtomicUsize::new(0));
 
         // Chunks are synthesized concurrently, but audio must be concatenated in
         // text order; the index travels with each result for the final sort.
         let mut pending = FuturesUnordered::new();
-        let mut ordered: Vec<(usize, Vec<u8>)> = Vec::with_capacity(total);
+        let mut ordered: Vec<(usize, Vec<u8>, Vec<SubtitleCue>)> = Vec::with_capacity(total);
         let mut next_chunk = 0;
 
         while next_chunk < total || !pending.is_empty() {
             while next_chunk < total && pending.len() < concurrency {
                 let index = next_chunk;
-                let chunk_text = &chunks[index];
+                let chunk_item = plan[index].clone();
                 let completed = Arc::clone(&completed);
+                let progress = self.progress.clone();
                 next_chunk += 1;
 
-                pending.push(async move {
-                    if *self.cancel_rx.borrow() {
-                        return Err(EdgeTTSError::Cancelled);
+                match chunk_item {
+                    SynthesisChunk::Silence(duration_ms) => {
+                        let audio = generate_silent_mp3(duration_ms);
+                        let done = completed.fetch_add(1, Ordering::SeqCst) + 1;
+                        if let Some(callback) = &progress {
+                            callback(done, total);
+                        }
+                        ordered.push((index, audio, Vec::new()));
                     }
+                    SynthesisChunk::Text(chunk_text) => {
+                        let cancel_rx = self.cancel_rx.clone();
+                        let base_url = base_url.to_string();
+                        pending.push(async move {
+                            if *cancel_rx.borrow() {
+                                return Err(EdgeTTSError::Cancelled);
+                            }
 
-                    let audio = self
-                        .stream_single_chunk_with_timeout(chunk_text, base_url, receive_timeout)
-                        .await?;
+                            let (audio, cues) = self
+                                .stream_single_chunk_with_timeout(
+                                    &chunk_text,
+                                    &base_url,
+                                    receive_timeout,
+                                )
+                                .await?;
 
-                    let done = completed.fetch_add(1, Ordering::SeqCst) + 1;
-                    if let Some(callback) = &self.progress {
-                        callback(done, total);
+                            let done = completed.fetch_add(1, Ordering::SeqCst) + 1;
+                            if let Some(callback) = &progress {
+                                callback(done, total);
+                            }
+
+                            Ok::<(usize, Vec<u8>, Vec<SubtitleCue>), EdgeTTSError>((
+                                index, audio, cues,
+                            ))
+                        });
                     }
-
-                    Ok::<(usize, Vec<u8>), EdgeTTSError>((index, audio))
-                });
+                }
             }
 
-            let Some(result) = pending.next().await else {
-                break;
-            };
-            ordered.push(result?);
+            if !pending.is_empty() {
+                if let Some(result) = pending.next().await {
+                    ordered.push(result?);
+                }
+            }
         }
 
-        ordered.sort_by_key(|(index, _)| *index);
+        ordered.sort_by_key(|(index, _, _)| *index);
 
         let mut all_audio = Vec::new();
-        for (_, audio) in ordered {
+        let mut all_cues = Vec::new();
+        let mut cumulative_bytes: u64 = 0;
+
+        for (_, audio, cues) in ordered {
+            // Edge TTS 48kbps CBR: 48,000 bits/sec = 6,000 bytes/sec
+            // Ticks per byte: 8 * 10_000_000 / 48_000 = 5000 / 3
+            let chunk_offset_ticks = cumulative_bytes * 5000 / 3;
+            for mut cue in cues {
+                cue.offset = cue.offset.saturating_add(chunk_offset_ticks);
+                cue.start_ms = ticks_to_ms(cue.offset);
+                cue.end_ms = ticks_to_ms(cue.offset.saturating_add(cue.duration));
+                all_cues.push(cue);
+            }
+            cumulative_bytes = cumulative_bytes.saturating_add(audio.len() as u64);
             all_audio.extend_from_slice(&audio);
         }
 
         if all_audio.is_empty() {
             Err(EdgeTTSError::NoAudioReceived)
         } else {
-            Ok(all_audio)
+            let track = build_subtitle_track(all_cues);
+            Ok((all_audio, track))
         }
     }
 
@@ -154,7 +198,7 @@ impl Communicate {
         chunk_text: &str,
         base_url: &str,
         receive_timeout: std::time::Duration,
-    ) -> Result<Vec<u8>, EdgeTTSError> {
+    ) -> Result<(Vec<u8>, Vec<SubtitleCue>), EdgeTTSError> {
         let mut socket = self.connect_websocket(base_url).await?;
         let request_id = generate_request_id();
 
@@ -172,6 +216,7 @@ impl Communicate {
             .map_err(map_websocket_message_error)?;
 
         let mut audio = Vec::new();
+        let mut cues = Vec::new();
         let mut cancel_rx = self.cancel_rx.clone();
 
         loop {
@@ -206,9 +251,13 @@ impl Communicate {
 
             match message {
                 Message::Text(text) => {
-                    let (headers, _) = parse_text_message(text.as_str());
+                    let (headers, body) = parse_text_message(text.as_str());
                     match headers.get("Path").map(String::as_str) {
-                        Some("turn.start" | "response" | "audio.metadata") => {}
+                        Some("turn.start" | "response") => {}
+                        Some("audio.metadata") => {
+                            let parsed = parse_metadata_body(body, 0);
+                            cues.extend(parsed);
+                        }
                         Some("turn.end") => break,
                         Some(other) => {
                             return Err(EdgeTTSError::UnexpectedResponse(format!(
@@ -241,7 +290,7 @@ impl Communicate {
         if audio.is_empty() {
             Err(EdgeTTSError::NoAudioReceived)
         } else {
-            Ok(audio)
+            Ok((audio, cues))
         }
     }
 
@@ -374,7 +423,7 @@ fn build_speech_config_message(config: &TTSConfig) -> String {
                 "audio": {
                     "metadataoptions": {
                         "sentenceBoundaryEnabled": false,
-                        "wordBoundaryEnabled": false
+                        "wordBoundaryEnabled": true
                     },
                     "outputFormat": config.output_format
                 }

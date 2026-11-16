@@ -1,5 +1,12 @@
 import { defineStore } from "pinia";
-import type { AppLanguage, ConflictStrategy, OutputFormat, ThemeMode, TtsSettings } from "../types";
+import type {
+  AppLanguage,
+  ConflictStrategy,
+  FileNamePattern,
+  OutputFormat,
+  ThemeMode,
+  TtsSettings,
+} from "../types";
 
 const MIN_RETRIES = 1;
 const MAX_RETRIES = 10;
@@ -22,11 +29,13 @@ export const useSettingsStore = defineStore("settings", {
   state: (): TtsSettings => ({
     savePath: "",
     outputFormat: "mp3",
+    fileNamePattern: "content",
     maxRetries: 3,
     fileConcurrency: 3,
     chunkConcurrency: 3,
     conflictStrategy: "rename",
     autoplay: true,
+    exportSubtitles: false,
     language: "zh-CN",
     themeMode: "system",
   }),
@@ -35,8 +44,14 @@ export const useSettingsStore = defineStore("settings", {
     updateSavePath(path: string) {
       this.$patch({ savePath: path });
     },
+    updateExportSubtitles(exportSubtitles: boolean) {
+      this.$patch({ exportSubtitles });
+    },
     updateOutputFormat(format: OutputFormat) {
       this.$patch({ outputFormat: format });
+    },
+    updateFileNamePattern(fileNamePattern: FileNamePattern) {
+      this.$patch({ fileNamePattern });
     },
     updateMaxRetries(count: number) {
       this.$patch({

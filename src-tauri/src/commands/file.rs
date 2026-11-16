@@ -9,6 +9,7 @@ use tauri_plugin_dialog::DialogExt;
 use crate::utils::fs::write_file_atomically;
 
 const ALLOWED_OUTPUT_EXTENSIONS: [&str; 4] = ["mp3", "wav", "ogg", "flac"];
+const ALLOWED_TEXT_EXTENSIONS: [&str; 4] = ["srt", "vtt", "lrc", "txt"];
 const CONFLICT_STRATEGIES: [&str; 3] = ["overwrite", "skip", "rename"];
 const MAX_CONFLICT_SUFFIX: u32 = 1000;
 
@@ -31,9 +32,18 @@ pub async fn read_text_file(path: String) -> Result<String, String> {
     };
 
     match extension.as_str() {
-        "txt" => tokio::fs::read_to_string(&path)
-            .await
-            .map_err(|error| format!("Failed to read txt file: {error}")),
+        "txt" => {
+            let bytes = tokio::fs::read(&path)
+                .await
+                .map_err(|error| format!("Failed to read txt file: {error}"))?;
+            match std::str::from_utf8(&bytes) {
+                Ok(valid_str) => Ok(valid_str.trim_start_matches('\u{feff}').to_string()),
+                Err(_) => {
+                    let (decoded, _, _) = encoding_rs::GB18030.decode(&bytes);
+                    Ok(decoded.trim_start_matches('\u{feff}').to_string())
+                }
+            }
+        }
         "md" | "markdown" => {
             let markdown = tokio::fs::read_to_string(&path)
                 .await
@@ -98,6 +108,46 @@ pub async fn write_binary_file(path: String, data: String) -> Result<(), String>
         .map_err(|error| format!("Invalid base64 audio data: {error}"))?;
 
     write_file_atomically(Path::new(&path), &bytes).await
+}
+
+#[command]
+pub async fn write_text_file(path: String, content: String) -> Result<(), String> {
+    validate_text_output_path(&path)?;
+    write_file_atomically(Path::new(&path), content.as_bytes()).await
+}
+
+fn validate_text_output_path(path: &str) -> Result<(), String> {
+    let file_path = Path::new(path);
+    let Some(file_name) = file_path.file_name().and_then(|value| value.to_str()) else {
+        return Err("Output file name is invalid".to_string());
+    };
+    if file_name.is_empty() {
+        return Err("Output file name is invalid".to_string());
+    }
+
+    let Some(parent) = file_path.parent() else {
+        return Err("Output file must include a parent directory".to_string());
+    };
+    if !parent.exists() {
+        return Err(format!("Output directory not found: {}", parent.display()));
+    }
+    if !parent.is_dir() {
+        return Err("Output parent path is not a directory".to_string());
+    }
+
+    let Some(extension) = file_path
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(|value| value.to_ascii_lowercase())
+    else {
+        return Err("Output file must have an extension".to_string());
+    };
+
+    if !ALLOWED_TEXT_EXTENSIONS.contains(&extension.as_str()) {
+        return Err(format!("Unsupported output file type: .{extension}"));
+    }
+
+    Ok(())
 }
 
 /// Decides what the batch queue should do when the target file already exists.
@@ -304,6 +354,20 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_read_text_file_reads_gbk_encoded_text() {
+        let path = unique_temp_path("txt");
+        let (gbk_bytes, _, _) = encoding_rs::GB18030.encode("第一章 修仙路漫漫");
+        tokio::fs::write(&path, &gbk_bytes).await.unwrap();
+
+        let result = read_text_file(path.to_string_lossy().into_owned())
+            .await
+            .unwrap();
+
+        assert_eq!(result, "第一章 修仙路漫漫");
+        let _ = tokio::fs::remove_file(path).await;
+    }
+
+    #[tokio::test]
     async fn test_read_text_file_strips_markdown_formatting() {
         let path = unique_temp_path("md");
         tokio::fs::write(&path, "Hello **world**\n\n```rs\nignored\n```")
@@ -496,6 +560,20 @@ mod tests {
             .unwrap();
 
         assert!(!path.exists());
+    }
+
+    #[tokio::test]
+    async fn test_write_text_file_writes_subtitles() {
+        let path = unique_temp_path("srt");
+        let content = "1\n00:00:01,000 --> 00:00:02,000\nHello\n\n";
+
+        write_text_file(path.to_string_lossy().into_owned(), content.to_string())
+            .await
+            .unwrap();
+
+        let read_back = tokio::fs::read_to_string(&path).await.unwrap();
+        assert_eq!(read_back, content);
+        let _ = tokio::fs::remove_file(path).await;
     }
 
     #[tokio::test]

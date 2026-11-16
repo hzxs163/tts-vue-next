@@ -7,9 +7,14 @@ import { defineComponent } from "vue";
 import i18n from "../../plugins/i18n";
 import { useBatchStore } from "../../stores/batch";
 
-const { openMock, messageErrorMock } = vi.hoisted(() => ({
+const { openMock, messageErrorMock, invokeMock } = vi.hoisted(() => ({
   openMock: vi.fn(),
   messageErrorMock: vi.fn(),
+  invokeMock: vi.fn(),
+}));
+
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: invokeMock,
 }));
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({
@@ -54,6 +59,7 @@ describe("FileUpload", () => {
         plugins: [pinia, i18n],
         stubs: {
           VBtn: buttonStub,
+          NovelSplitDialog: true,
         },
       },
     });
@@ -83,5 +89,20 @@ describe("FileUpload", () => {
     const wrapper = await mountFileUpload();
 
     expect(wrapper.find("button").attributes("disabled")).toBeDefined();
+  });
+
+  test("opens novel picker and loads novel file", async () => {
+    openMock.mockResolvedValue("C:/novels/douluo.txt");
+    invokeMock.mockResolvedValue("第1章 斗罗大陆\n穿越而来的少年。");
+
+    const wrapper = await mountFileUpload();
+    const buttons = wrapper.findAll("button");
+    expect(buttons.length).toBe(2);
+
+    // Second button is novel splitter
+    await buttons[1].trigger("click");
+
+    expect(openMock).toHaveBeenCalledTimes(1);
+    expect(invokeMock).toHaveBeenCalledWith("read_text_file", { path: "C:/novels/douluo.txt" });
   });
 });

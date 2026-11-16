@@ -126,6 +126,23 @@ describe("AudioPlayer", () => {
     expect(writeFileMock).not.toHaveBeenCalled();
   });
 
+  test("uses text content prefix as default save filename", async () => {
+    const ttsStore = useTtsStore();
+    ttsStore.setText("今天的天气[停顿 1s]确实不错啊");
+    saveMock.mockResolvedValue("/tmp/今天的天气确实不错啊.wav");
+
+    const wrapper = await mountAudioPlayer();
+    const buttons = wrapper.findAll("button");
+    await buttons[1].trigger("click");
+    await flushPromises();
+
+    expect(saveMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        defaultPath: "今天的天气确实不错啊.wav",
+      }),
+    );
+  });
+
   test("preserves the original save error when temp file cleanup also fails", async () => {
     saveMock.mockResolvedValue("/tmp/output.wav");
     invokeMock
@@ -180,5 +197,21 @@ describe("AudioPlayer", () => {
     expect(invokeMock).toHaveBeenLastCalledWith("remove_file", {
       path: "/tmp/output.wav.tmp.mp3",
     });
+  });
+
+  test("shows subtitle save button and active subtitle banner when subtitles exist", async () => {
+    const ttsStore = useTtsStore();
+    ttsStore.$patch({
+      subtitles: {
+        srt: "1\n00:00:00,000 --> 00:00:01,000\nHello world\n\n",
+        vtt: "WEBVTT\n\n",
+        cues: [{ offset: 0, duration: 10000000, startMs: 0, endMs: 1000, text: "Hello world" }],
+      },
+    });
+
+    const wrapper = await mountAudioPlayer();
+    expect(wrapper.find('button[aria-label="Save subtitles (.srt)"]').exists()).toBe(true);
+    expect(wrapper.find(".audio-player__subtitle-banner").exists()).toBe(true);
+    expect(wrapper.find(".audio-player__subtitle-text").text()).toBe("Hello world");
   });
 });

@@ -13,6 +13,7 @@ use crate::edge_tts::Communicate;
 use crate::utils::retry::{retry_with_backoff, RetryOutcome};
 
 const PROGRESS_EVENT: &str = "tts://progress";
+const SUBTITLES_EVENT: &str = "tts://subtitles";
 
 #[derive(Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -20,6 +21,15 @@ pub struct TtsProgressEvent {
     pub task_id: String,
     pub completed: usize,
     pub total: usize,
+}
+
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TtsSubtitlesEvent {
+    pub task_id: String,
+    pub srt: String,
+    pub vtt: String,
+    pub cues: Vec<crate::edge_tts::types::SubtitleCue>,
 }
 
 type ActiveTaskMap = Arc<Mutex<HashMap<String, watch::Sender<bool>>>>;
@@ -62,24 +72,39 @@ pub async fn tts_convert(
     params: TtsConvertParams,
 ) -> Result<tauri::ipc::Response, CommandError> {
     let task_id = params.task_id.clone();
+    let progress_task_id = task_id.clone();
+    let app_handle = app.clone();
     let on_progress = move |completed: usize, total: usize| {
-        let _ = app.emit(
+        let _ = app_handle.emit(
             PROGRESS_EVENT,
             TtsProgressEvent {
-                task_id: task_id.clone(),
+                task_id: progress_task_id.clone(),
                 completed,
                 total,
             },
         );
     };
 
-    let audio = synthesize(params, on_progress).await?;
+    let (audio, subtitles) = synthesize(params, on_progress).await?;
+    let _ = app.emit(
+        SUBTITLES_EVENT,
+        TtsSubtitlesEvent {
+            task_id: task_id.clone(),
+            srt: subtitles.srt,
+            vtt: subtitles.vtt,
+            cues: subtitles.cues,
+        },
+    );
+
     // Raw IPC body instead of a JSON number array: a 1 MB MP3 otherwise
     // expands to roughly 3-4 MB of JSON text on every conversion.
     Ok(tauri::ipc::Response::new(audio))
 }
 
-async fn synthesize<F>(params: TtsConvertParams, on_progress: F) -> Result<Vec<u8>, EdgeTTSError>
+async fn synthesize<F>(
+    params: TtsConvertParams,
+    on_progress: F,
+) -> Result<(Vec<u8>, crate::edge_tts::types::SubtitleTrack), EdgeTTSError>
 where
     F: Fn(usize, usize) + Send + Sync + Clone + 'static,
 {
@@ -90,21 +115,22 @@ where
             Communicate::new(text, config, cancel_rx)
                 .with_chunk_concurrency(chunk_concurrency)
                 .with_progress(on_progress)
-                .stream_audio()
+                .stream_audio_with_subtitles()
                 .await
         }
     })
     .await
 }
 
-async fn run_tts_convert<R, Fut>(
+async fn run_tts_convert<T, R, Fut>(
     params: TtsConvertParams,
     base_delay_ms: u64,
     run_stream: R,
-) -> Result<Vec<u8>, EdgeTTSError>
+) -> Result<T, EdgeTTSError>
 where
+    T: Send + 'static,
     R: Fn(String, TTSConfig, watch::Receiver<bool>) -> Fut + Clone,
-    Fut: Future<Output = Result<Vec<u8>, EdgeTTSError>>,
+    Fut: Future<Output = Result<T, EdgeTTSError>>,
 {
     let (cancel_tx, cancel_rx) = watch::channel(false);
     let task_id = params.task_id;
@@ -235,7 +261,7 @@ mod tests {
         };
 
         let error = run_tts_convert(params, 0, |_, _, _| async {
-            Err(EdgeTTSError::WebSocketError("always fails".to_string()))
+            Err::<Vec<u8>, _>(EdgeTTSError::WebSocketError("always fails".to_string()))
         })
         .await
         .unwrap_err();
@@ -267,7 +293,7 @@ mod tests {
                 let attempts = Arc::clone(&attempts);
                 async move {
                     attempts.fetch_add(1, Ordering::SeqCst);
-                    Err(EdgeTTSError::Cancelled)
+                    Err::<Vec<u8>, _>(EdgeTTSError::Cancelled)
                 }
             }
         })
@@ -302,7 +328,7 @@ mod tests {
                 let attempts = Arc::clone(&attempts);
                 async move {
                     attempts.fetch_add(1, Ordering::SeqCst);
-                    Err(EdgeTTSError::HttpError(403))
+                    Err::<Vec<u8>, _>(EdgeTTSError::HttpError(403))
                 }
             }
         })
@@ -384,7 +410,7 @@ mod tests {
         use uuid::Uuid;
 
         let params = TtsConvertParams {
-            text: "这是一次真实的语音合成测试，用于验证修复后的接口连通性。".to_string(),
+            text: "今天的天气[停顿 1s]确实不错啊".to_string(),
             voice: "zh-CN-XiaoxiaoNeural".to_string(),
             rate: "+0%".to_string(),
             pitch: "+0Hz".to_string(),
@@ -395,13 +421,20 @@ mod tests {
             chunk_concurrency: 1,
         };
 
-        let audio = synthesize(params, |_: usize, _: usize| {})
+        let (audio, subtitles) = synthesize(params, |_: usize, _: usize| {})
             .await
             .expect("live synthesis failed");
+
+        println!("SUBTITLES:\n{}", subtitles.srt);
+        for cue in &subtitles.cues {
+            println!("CUE: {}ms - {}ms: {}", cue.start_ms, cue.end_ms, cue.text);
+        }
 
         assert!(audio.len() > 4096, "audio too small: {} bytes", audio.len());
         assert_eq!(audio[0], 0xFF, "missing MP3 frame sync byte");
         assert_eq!(audio[1] & 0xE0, 0xE0, "invalid MP3 frame header");
+        assert!(!subtitles.cues.is_empty(), "expected subtitle cues");
+        assert!(subtitles.srt.contains("-->"), "expected valid SRT");
 
         let output = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../.workbuddy/tmp/live_tts_probe.mp3");

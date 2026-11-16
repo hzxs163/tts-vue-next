@@ -10,6 +10,28 @@ const text = computed({
 });
 const hasText = computed(() => ttsStore.text.length > 0);
 
+function insertPause(duration: string) {
+  if (ttsStore.converting) {
+    return;
+  }
+
+  const textarea = document.querySelector<HTMLTextAreaElement>(".text-panel__field textarea");
+  const tag = `[停顿 ${duration}]`;
+  if (textarea) {
+    const start = textarea.selectionStart ?? ttsStore.text.length;
+    const end = textarea.selectionEnd ?? ttsStore.text.length;
+    const original = ttsStore.text;
+    const updated = original.slice(0, start) + tag + original.slice(end);
+    ttsStore.setText(updated);
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + tag.length, start + tag.length);
+    }, 0);
+  } else {
+    ttsStore.setText(ttsStore.text + tag);
+  }
+}
+
 function clearText() {
   if (ttsStore.converting) {
     return;
@@ -28,6 +50,40 @@ function clearText() {
         </v-avatar>
       </template>
       <v-card-title class="text-h6">{{ $t("tts.textInput.title") }}</v-card-title>
+      <template #append>
+        <div class="d-flex align-center ga-1">
+          <span class="text-caption text-medium-emphasis mr-1"
+            >{{ $t("tts.textInput.insertPause") }}:</span
+          >
+          <v-btn
+            size="x-small"
+            variant="tonal"
+            color="primary"
+            :disabled="ttsStore.converting"
+            @click="insertPause('500ms')"
+          >
+            0.5s
+          </v-btn>
+          <v-btn
+            size="x-small"
+            variant="tonal"
+            color="primary"
+            :disabled="ttsStore.converting"
+            @click="insertPause('1s')"
+          >
+            1s
+          </v-btn>
+          <v-btn
+            size="x-small"
+            variant="tonal"
+            color="primary"
+            :disabled="ttsStore.converting"
+            @click="insertPause('2s')"
+          >
+            2s
+          </v-btn>
+        </div>
+      </template>
     </v-card-item>
     <v-card-text class="text-panel__body">
       <v-textarea

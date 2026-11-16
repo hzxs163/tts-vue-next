@@ -67,6 +67,30 @@ pub struct Voice {
     pub voice_tag: VoiceTag,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubtitleCue {
+    pub offset: u64,
+    pub duration: u64,
+    pub start_ms: u64,
+    pub end_ms: u64,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubtitleTrack {
+    pub cues: Vec<SubtitleCue>,
+    pub srt: String,
+    pub vtt: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SynthesisChunk {
+    Text(String),
+    Silence(u64),
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct VoiceTag {
     #[serde(rename = "ContentCategories", default)]

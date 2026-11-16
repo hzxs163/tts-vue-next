@@ -12,6 +12,11 @@ const passthroughStub = defineComponent({
   template: '<div v-bind="$attrs"><slot /></div>',
 });
 
+const cardItemStub = defineComponent({
+  inheritAttrs: false,
+  template: '<div v-bind="$attrs"><slot name="prepend" /><slot /><slot name="append" /></div>',
+});
+
 const textareaStub = defineComponent({
   inheritAttrs: false,
   props: {
@@ -59,7 +64,11 @@ async function mountTextInput(initialText = "", converting = false) {
       plugins: [pinia, i18n],
       stubs: {
         VCard: passthroughStub,
+        VCardItem: cardItemStub,
+        VCardTitle: passthroughStub,
         VCardText: passthroughStub,
+        VAvatar: passthroughStub,
+        VIcon: passthroughStub,
         VTextarea: textareaStub,
         VBtn: buttonStub,
         VFadeTransition: transitionStub,
@@ -111,5 +120,15 @@ describe("TextInput", () => {
     await wrapper.find('[aria-label="Clear text input"]').trigger("click");
 
     expect(store.text).toBe("hello");
+  });
+
+  test("inserts pause tag into text store", async () => {
+    const { wrapper, store } = await mountTextInput("Hello ", false);
+    const pauseButtons = wrapper.findAll("button");
+    const pauseBtn = pauseButtons.find((btn) => btn.text().includes("0.5s"));
+    expect(pauseBtn).toBeDefined();
+
+    await pauseBtn!.trigger("click");
+    expect(store.text).toBe("Hello [停顿 500ms]");
   });
 });

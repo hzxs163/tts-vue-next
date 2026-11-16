@@ -442,4 +442,48 @@ describe("useBatchStore", () => {
     store.applyProgress({ taskId: "unknown", completed: 2, total: 2 });
     expect(store.files[0]?.progress).toBe(55);
   });
+
+  test("adds chapters with in-memory content and converts without disk read", async () => {
+    const { useBatchStore } = await import("./batch");
+    const store = useBatchStore();
+
+    store.addChapters(
+      [
+        {
+          id: "ch-1",
+          index: 1,
+          title: "第01章 初入江湖",
+          content: "少年策马江湖行。",
+          charCount: 8,
+          selected: true,
+        },
+      ],
+      "C:/books/novel.txt",
+      "凡人修仙",
+    );
+
+    expect(store.files.length).toBe(1);
+    expect(store.files[0].name).toBe("凡人修仙_第01章 初入江湖.txt");
+    expect(store.files[0].content).toBe("少年策马江湖行。");
+
+    invokeMock.mockImplementation(async (command, payload) => {
+      switch (command) {
+        case "resolve_output_path":
+          return resolveOutputPath(payload);
+        case "tts_convert":
+          return new ArrayBuffer(8);
+        case "write_binary_file":
+          return null;
+        default:
+          throw new Error(`Unexpected command: ${command}`);
+      }
+    });
+
+    await store.convertAll();
+
+    expect(store.files[0].status).toBe("done");
+    expect(store.files[0].progress).toBe(100);
+    // Verified read_text_file was NOT invoked since file.content was provided
+    expect(invokeMock).not.toHaveBeenCalledWith("read_text_file", expect.anything());
+  });
 });

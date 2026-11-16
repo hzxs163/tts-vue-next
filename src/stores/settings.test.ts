@@ -36,11 +36,13 @@ describe("useSettingsStore", () => {
 
     expect(store.savePath).toBe("");
     expect(store.outputFormat).toBe("mp3");
+    expect(store.fileNamePattern).toBe("content");
     expect(store.maxRetries).toBe(3);
     expect(store.fileConcurrency).toBe(3);
     expect(store.chunkConcurrency).toBe(3);
     expect(store.conflictStrategy).toBe("rename");
     expect(store.autoplay).toBe(true);
+    expect(store.exportSubtitles).toBe(false);
     expect(store.language).toBe("zh-CN");
     expect(store.themeMode).toBe("system");
   });
@@ -51,18 +53,22 @@ describe("useSettingsStore", () => {
 
     store.updateSavePath("/tmp/output");
     store.updateOutputFormat("wav");
+    store.updateFileNamePattern("timestamp");
     store.updateMaxRetries(99);
     store.updateFileConcurrency(0);
     store.updateChunkConcurrency(9);
     store.updateConflictStrategy("skip");
+    store.updateExportSubtitles(true);
     store.updateThemeMode("dark");
 
     expect(store.savePath).toBe("/tmp/output");
     expect(store.outputFormat).toBe("wav");
+    expect(store.fileNamePattern).toBe("timestamp");
     expect(store.maxRetries).toBe(10);
     expect(store.fileConcurrency).toBe(1);
     expect(store.chunkConcurrency).toBe(5);
     expect(store.conflictStrategy).toBe("skip");
+    expect(store.exportSubtitles).toBe(true);
     expect(store.themeMode).toBe("dark");
   });
 

@@ -4,12 +4,15 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   BatchFile,
   ConflictStrategy,
+  NovelChapter,
   OutputFormat,
   TtsParams,
   TtsProgressEvent,
+  TtsSubtitlesEvent,
 } from "../types";
 import { useSettingsStore } from "./settings";
 import { useVoicesStore } from "./voices";
+import { useDictionaryStore } from "./dictionary";
 import { saveAudioBytes } from "../utils/saveAudio";
 import { toErrorMessage } from "../utils/ttsErrors";
 
@@ -22,6 +25,7 @@ interface BatchState {
   files: BatchFile[];
   converting: boolean;
   stopRequested: boolean;
+  subtitlesMap: Record<string, TtsSubtitlesEvent>;
 }
 
 interface BatchExecutionSnapshot {
@@ -31,6 +35,7 @@ interface BatchExecutionSnapshot {
   fileConcurrency: number;
   chunkConcurrency: number;
   conflictStrategy: ConflictStrategy;
+  exportSubtitles: boolean;
   selectedVoice: string;
 }
 
@@ -82,6 +87,7 @@ export const useBatchStore = defineStore("batch", {
     files: [],
     converting: false,
     stopRequested: false,
+    subtitlesMap: {},
   }),
 
   actions: {
@@ -103,6 +109,12 @@ export const useBatchStore = defineStore("batch", {
       });
     },
 
+    applySubtitles(event: TtsSubtitlesEvent) {
+      this.$patch((state) => {
+        state.subtitlesMap[event.taskId] = event;
+      });
+    },
+
     addFiles(filePaths: string[]) {
       const knownPaths = new Set(this.files.map((file) => file.path));
       const uniquePaths = filePaths.filter((path) => {
@@ -121,6 +133,31 @@ export const useBatchStore = defineStore("batch", {
         status: "pending",
         progress: 0,
       }));
+
+      if (nextFiles.length === 0) {
+        return;
+      }
+
+      this.$patch((state) => {
+        state.files = [...state.files, ...nextFiles];
+      });
+    },
+
+    addChapters(chapters: NovelChapter[], sourcePath: string, titlePrefix?: string) {
+      const nextFiles = chapters.map<BatchFile>((chapter) => {
+        const baseName = titlePrefix ? `${titlePrefix}_${chapter.title}` : chapter.title;
+        const fileName = `${baseName}.txt`;
+        return {
+          id: crypto.randomUUID(),
+          name: fileName,
+          path: sourcePath,
+          size: new Blob([chapter.content]).size,
+          status: "pending",
+          progress: 0,
+          content: chapter.content,
+          chapterIndex: chapter.index,
+        };
+      });
 
       if (nextFiles.length === 0) {
         return;
@@ -193,6 +230,7 @@ export const useBatchStore = defineStore("batch", {
         fileConcurrency: settingsStore.fileConcurrency,
         chunkConcurrency: settingsStore.chunkConcurrency,
         conflictStrategy: settingsStore.conflictStrategy,
+        exportSubtitles: settingsStore.exportSubtitles,
         selectedVoice: voicesStore.selectedVoice,
       };
       const workerCount = Math.min(snapshot.fileConcurrency, fileIds.length);
@@ -260,12 +298,16 @@ export const useBatchStore = defineStore("batch", {
           }
 
           const outputPath = resolvedOutputPath;
-          const text = await invoke<string>("read_text_file", { path: file.path });
+          const text =
+            file.content !== undefined
+              ? file.content
+              : await invoke<string>("read_text_file", { path: file.path });
           if (this.stopRequested) {
             markPending();
             return;
           }
-          params.text = text;
+          const dictionaryStore = useDictionaryStore();
+          params.text = dictionaryStore.applyDictionary(text);
 
           this.$patch((state) => {
             state.files = updateFile(state.files, file.id, { progress: 30 });
@@ -286,6 +328,20 @@ export const useBatchStore = defineStore("batch", {
             outputPath,
             snapshot.outputFormat,
           );
+
+          if (snapshot.exportSubtitles) {
+            const srtData = this.subtitlesMap[file.id]?.srt;
+            if (srtData) {
+              const srtPath = outputPath.replace(/\.[^.]+$/, "") + ".srt";
+              try {
+                await invoke("write_text_file", { path: srtPath, content: srtData });
+              } catch {
+                // Ignore subtitle write error so audio remains saved
+              }
+            }
+          }
+          delete this.subtitlesMap[file.id];
+
           const cleanupWarning = cleanupError
             ? i18n.global.t("batch.errors.failedToRemoveTempFile", {
                 path: cleanupPath ?? "",

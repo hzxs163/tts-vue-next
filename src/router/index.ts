@@ -12,6 +12,11 @@ const routes = [
     component: () => import("../views/BatchConvert.vue"),
   },
   {
+    path: "/dictionary",
+    name: "dictionary",
+    component: () => import("../views/DictionaryView.vue"),
+  },
+  {
     path: "/settings",
     name: "settings",
     component: () => import("../views/Settings.vue"),

@@ -1,8 +1,9 @@
 import { defineStore } from "pinia";
 import { invoke } from "@tauri-apps/api/core";
-import type { TtsParams, TtsProgressEvent } from "../types";
+import type { SubtitleTrack, TtsParams, TtsProgressEvent, TtsSubtitlesEvent } from "../types";
 import { useVoicesStore } from "./voices";
 import { useSettingsStore } from "./settings";
+import { useDictionaryStore } from "./dictionary";
 import { classifyTtsError, toErrorMessage, type TtsErrorKind } from "../utils/ttsErrors";
 
 const EDGE_TTS_OUTPUT_FORMAT = "audio-24khz-48kbitrate-mono-mp3";
@@ -13,6 +14,7 @@ interface TtsState {
   progress: number;
   audioUrl: string | null;
   audioBytes: Uint8Array | null;
+  subtitles: SubtitleTrack | null;
   error: string | null;
   errorKind: TtsErrorKind | null;
   currentTaskId: string | null;
@@ -39,6 +41,7 @@ export const useTtsStore = defineStore("tts", {
     progress: 0,
     audioUrl: null,
     audioBytes: null,
+    subtitles: null,
     error: null,
     errorKind: null,
     currentTaskId: null,
@@ -86,6 +89,20 @@ export const useTtsStore = defineStore("tts", {
       });
     },
 
+    applySubtitles(event: TtsSubtitlesEvent) {
+      if (!this.currentTaskId || this.currentTaskId !== event.taskId) {
+        return;
+      }
+
+      this.$patch({
+        subtitles: {
+          srt: event.srt,
+          vtt: event.vtt,
+          cues: event.cues,
+        },
+      });
+    },
+
     async convert() {
       if (this.converting || !this.text.trim()) {
         return;
@@ -93,10 +110,12 @@ export const useTtsStore = defineStore("tts", {
 
       const voicesStore = useVoicesStore();
       const settingsStore = useSettingsStore();
+      const dictionaryStore = useDictionaryStore();
       const taskId = crypto.randomUUID();
       const requestVersion = this.requestVersion + 1;
+      const textToSynthesize = dictionaryStore.applyDictionary(this.text);
       const params: TtsParams = {
-        text: this.text,
+        text: textToSynthesize,
         voice: voicesStore.selectedVoice,
         rate: this.rateString,
         pitch: this.pitchString,
@@ -116,6 +135,7 @@ export const useTtsStore = defineStore("tts", {
         currentTaskId: taskId,
         audioUrl: null,
         audioBytes: null,
+        subtitles: null,
         requestVersion,
       });
 
@@ -187,6 +207,7 @@ export const useTtsStore = defineStore("tts", {
         converting: false,
         audioUrl: null,
         audioBytes: null,
+        subtitles: null,
         error: null,
         errorKind: null,
         progress: 0,

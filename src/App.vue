@@ -1,18 +1,26 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, watch } from "vue";
 import { useTheme } from "vuetify";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import TitleBar from "./components/layout/TitleBar.vue";
 import AppLayout from "./components/layout/AppLayout.vue";
 import GlobalAlerts from "./components/layout/GlobalAlerts.vue";
 import i18n from "./plugins/i18n";
 import { useSettingsStore } from "./stores/settings";
+import { useTtsStore } from "./stores/tts";
+import { useBatchStore } from "./stores/batch";
+import type { TtsProgressEvent, TtsSubtitlesEvent } from "./types";
 import { normalizeAppLanguage, normalizeAppLocale } from "./utils/appLocale";
 import { resolveThemeName } from "./utils/themeMode";
 import { MessageProvider } from "vuetify-message-vue3";
 
 const theme = useTheme();
 const settingsStore = useSettingsStore();
+const ttsStore = useTtsStore();
+const batchStore = useBatchStore();
 let media: MediaQueryList | null = null;
+let unlistenProgress: UnlistenFn | null = null;
+let unlistenSubtitles: UnlistenFn | null = null;
 
 function applyTheme() {
   theme.change(resolveThemeName(settingsStore.themeMode, media?.matches ?? false));
@@ -40,11 +48,27 @@ onMounted(() => {
   media = window.matchMedia("(prefers-color-scheme: dark)");
   applyTheme();
   media.addEventListener("change", applyTheme);
+
+  void listen<TtsProgressEvent>("tts://progress", (event) => {
+    ttsStore.applyProgress(event.payload);
+    batchStore.applyProgress(event.payload);
+  }).then((fn) => {
+    unlistenProgress = fn;
+  });
+
+  void listen<TtsSubtitlesEvent>("tts://subtitles", (event) => {
+    ttsStore.applySubtitles(event.payload);
+    batchStore.applySubtitles(event.payload);
+  }).then((fn) => {
+    unlistenSubtitles = fn;
+  });
 });
 
 onUnmounted(() => {
   media?.removeEventListener("change", applyTheme);
   media = null;
+  unlistenProgress?.();
+  unlistenSubtitles?.();
 });
 
 watch(() => settingsStore.themeMode, applyTheme);

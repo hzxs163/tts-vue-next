@@ -191,6 +191,12 @@ async function showInFolder(path: string) {
         <v-card-title class="text-h6 ml-2">{{ $t("batch.list.title") }}</v-card-title>
       </template>
 
+      <template #append>
+        <div v-if="batchStore.files.length > 0">
+          <FileUpload />
+        </div>
+      </template>
+
       <!-- <div class="file-list__header pa-4 pb-2">
         <div class="text-h6">{{ $t("batch.list.title") }}</div>
       </div> -->

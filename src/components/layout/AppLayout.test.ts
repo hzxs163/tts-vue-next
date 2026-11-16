@@ -49,6 +49,7 @@ async function mountLayout(path = "/") {
     routes: [
       { path: "/", component: { template: "<div />" } },
       { path: "/batch", component: { template: "<div />" } },
+      { path: "/dictionary", component: { template: "<div />" } },
       { path: "/settings", component: { template: "<div />" } },
     ],
   });
@@ -92,6 +93,7 @@ describe("AppLayout", () => {
 
     expect(wrapper.text()).toContain("TTS");
     expect(wrapper.text()).toContain("Batch Convert");
+    expect(wrapper.text()).toContain("Dictionary");
     expect(wrapper.text()).toContain("Settings");
     expect(wrapper.get('[data-testid="sidebar-version"]').text()).toContain("Version v0.1.0");
     expect(wrapper.find('[data-testid="sidebar-version-update-icon"]').exists()).toBe(false);
@@ -104,13 +106,15 @@ describe("AppLayout", () => {
 
     const items = wrapper.findAll(".list-item-stub");
 
-    expect(items).toHaveLength(3);
+    expect(items).toHaveLength(4);
     expect(items[0].attributes("data-to")).toBe("/");
     expect(items[0].attributes("data-exact")).toBe("true");
     expect(items[0].attributes("data-active")).toBe("false");
     expect(items[1].attributes("data-to")).toBe("/batch");
     expect(items[1].attributes("data-active")).toBe("true");
-    expect(items[2].attributes("data-to")).toBe("/settings");
+    expect(items[2].attributes("data-to")).toBe("/dictionary");
+    expect(items[2].attributes("data-active")).toBe("false");
+    expect(items[3].attributes("data-to")).toBe("/settings");
   });
 
   test("uses full-height shell layout without viewport calc magic numbers", async () => {

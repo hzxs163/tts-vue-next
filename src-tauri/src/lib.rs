@@ -31,6 +31,7 @@ pub fn run() {
             commands::file::select_folder,
             commands::file::show_in_folder,
             commands::file::write_binary_file,
+            commands::file::write_text_file,
             commands::file::remove_file,
             commands::file::resolve_output_path,
             commands::audio::convert_audio_format,
