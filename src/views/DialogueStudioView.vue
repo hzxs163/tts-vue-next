@@ -391,415 +391,409 @@ async function exportSubtitlesFile() {
         </div>
       </div>
 
-      <!-- Tab Content Windows -->
-      <v-window v-model="activeTab" class="studio-tab-window">
-        <!-- ================= TAB 1: 剧本台本工作台 ================= -->
-        <v-window-item value="script" class="studio-window-item">
-          <!-- Script Actions & Quick Role Bar -->
-          <div
-            class="px-4 py-2 border-b bg-surface-variant-subtle d-flex flex-wrap align-center justify-space-between ga-2"
-          >
-            <div class="d-flex flex-wrap align-center ga-2">
+      <!-- Tab Content Panes -->
+      <!-- ================= TAB 1: 剧本台本工作台 ================= -->
+      <div v-show="activeTab === 'script'" class="studio-tab-pane">
+        <!-- Script Actions & Quick Role Bar -->
+        <div
+          class="script-actions-bar px-4 py-2 border-b bg-surface-variant-subtle d-flex flex-wrap align-center justify-space-between ga-2"
+        >
+          <div class="d-flex flex-wrap align-center ga-2">
+            <v-btn
+              variant="flat"
+              color="primary"
+              size="small"
+              prepend-icon="mdi-plus"
+              @click="dialogueStore.addLine()"
+            >
+              {{ $t("dialogue.script.addLine") }}
+            </v-btn>
+
+            <!-- Quick Append for Specific Role -->
+            <span class="text-caption text-medium-emphasis ml-2">快速追加台词：</span>
+            <v-chip
+              v-for="role in dialogueStore.roles"
+              :key="role.id"
+              size="small"
+              variant="tonal"
+              :color="role.color"
+              class="cursor-pointer"
+              @click="dialogueStore.addLine(role.id)"
+            >
+              <v-avatar start size="16" :color="role.color" class="text-white text-caption">
+                {{ role.name.slice(0, 1) }}
+              </v-avatar>
+              + {{ role.name }}
+            </v-chip>
+          </div>
+
+          <div class="d-flex align-center ga-2">
+            <span class="text-caption text-medium-emphasis"
+              >默认停顿：{{ dialogueStore.defaultPauseMs }}ms</span
+            >
+          </div>
+        </div>
+
+        <!-- Script Lines List -->
+        <div class="script-lines-scroll pa-4">
+          <template v-if="dialogueStore.lines.length > 0">
+            <div
+              v-for="(line, index) in dialogueStore.lines"
+              :key="line.id"
+              class="dialogue-line-card mb-3 pa-3 rounded-lg"
+              :style="{
+                borderLeft: `4px solid var(--v-theme-${getRoleById(line.roleId).color})`,
+              }"
+            >
+              <div class="d-flex align-center justify-space-between mb-2">
+                <div class="d-flex align-center ga-2">
+                  <span class="text-caption text-medium-emphasis font-weight-bold">
+                    #{{ index + 1 }}
+                  </span>
+
+                  <!-- Quick Role Switcher Menu -->
+                  <v-menu>
+                    <template #activator="{ props }">
+                      <v-btn
+                        v-bind="props"
+                        size="small"
+                        variant="tonal"
+                        :color="getRoleById(line.roleId).color"
+                        class="px-2 font-weight-bold"
+                        append-icon="mdi-chevron-down"
+                      >
+                        <v-avatar
+                          start
+                          size="18"
+                          :color="getRoleById(line.roleId).color"
+                          class="text-white text-caption mr-1"
+                        >
+                          {{ getRoleById(line.roleId).name.slice(0, 1) }}
+                        </v-avatar>
+                        {{ getRoleById(line.roleId).name }}
+                      </v-btn>
+                    </template>
+                    <v-list density="compact">
+                      <v-list-item
+                        v-for="r in dialogueStore.roles"
+                        :key="r.id"
+                        :title="r.name"
+                        :subtitle="r.voice.split('-').pop()"
+                        @click="dialogueStore.updateLine(line.id, { roleId: r.id })"
+                      >
+                        <template #prepend>
+                          <v-avatar size="20" :color="r.color" class="mr-2 text-white text-caption">
+                            {{ r.name.slice(0, 1) }}
+                          </v-avatar>
+                        </template>
+                      </v-list-item>
+                    </v-list>
+                  </v-menu>
+
+                  <!-- Pause Selector Menu -->
+                  <v-menu>
+                    <template #activator="{ props }">
+                      <v-chip
+                        v-bind="props"
+                        size="x-small"
+                        variant="outlined"
+                        class="text-caption cursor-pointer"
+                      >
+                        {{
+                          $t("dialogue.script.pauseAfter", {
+                            ms: line.pauseAfterMs || dialogueStore.defaultPauseMs,
+                          })
+                        }}
+                        <v-icon end size="12">mdi-clock-outline</v-icon>
+                      </v-chip>
+                    </template>
+                    <v-list density="compact">
+                      <v-list-item
+                        v-for="ms in pauseOptions"
+                        :key="ms"
+                        :title="`${ms} 毫秒`"
+                        @click="dialogueStore.updateLine(line.id, { pauseAfterMs: ms })"
+                      />
+                    </v-list>
+                  </v-menu>
+                </div>
+
+                <!-- Actions -->
+                <div class="d-flex align-center ga-1">
+                  <v-btn
+                    icon
+                    size="x-small"
+                    variant="text"
+                    color="primary"
+                    :loading="dialogueStore.auditioningLineId === line.id"
+                    :title="$t('dialogue.script.audition')"
+                    @click="dialogueStore.auditionLine(line.id)"
+                  >
+                    <v-icon size="16">mdi-play</v-icon>
+                  </v-btn>
+                  <v-btn
+                    icon="mdi-plus"
+                    size="x-small"
+                    variant="text"
+                    :title="$t('dialogue.script.insertAfter')"
+                    @click="dialogueStore.insertLineAfter(index, line.roleId)"
+                  />
+                  <v-btn
+                    icon="mdi-delete-outline"
+                    size="x-small"
+                    variant="text"
+                    color="error"
+                    :title="$t('dialogue.script.deleteLine')"
+                    @click="dialogueStore.removeLine(line.id)"
+                  />
+                </div>
+              </div>
+
+              <v-textarea
+                v-model="line.text"
+                rows="2"
+                auto-grow
+                density="compact"
+                variant="outlined"
+                hide-details
+                class="dialogue-textarea"
+              />
+            </div>
+          </template>
+
+          <div v-else class="text-center py-12 text-medium-emphasis">
+            <v-icon size="48" class="mb-2">mdi-drama-masks</v-icon>
+            <div class="text-body-1 font-weight-medium">
+              {{ $t("dialogue.script.emptyTitle") }}
+            </div>
+            <div class="text-caption mb-4">
+              {{ $t("dialogue.script.emptyDescription") }}
+            </div>
+            <div class="d-flex align-center justify-center ga-2">
               <v-btn
-                variant="flat"
                 color="primary"
+                variant="flat"
+                size="small"
+                prepend-icon="mdi-script-text-outline"
+                @click="showImportDialog = true"
+              >
+                {{ $t("dialogue.script.importScript") }}
+              </v-btn>
+              <v-btn
+                variant="outlined"
                 size="small"
                 prepend-icon="mdi-plus"
                 @click="dialogueStore.addLine()"
               >
                 {{ $t("dialogue.script.addLine") }}
               </v-btn>
-
-              <!-- Quick Append for Specific Role -->
-              <span class="text-caption text-medium-emphasis ml-2">快速追加台词：</span>
-              <v-chip
-                v-for="role in dialogueStore.roles"
-                :key="role.id"
-                size="small"
-                variant="tonal"
-                :color="role.color"
-                class="cursor-pointer"
-                @click="dialogueStore.addLine(role.id)"
-              >
-                <v-avatar start size="16" :color="role.color" class="text-white text-caption">
-                  {{ role.name.slice(0, 1) }}
-                </v-avatar>
-                + {{ role.name }}
-              </v-chip>
             </div>
+          </div>
+        </div>
 
-            <div class="d-flex align-center ga-2">
-              <span class="text-caption text-medium-emphasis"
-                >默认停顿：{{ dialogueStore.defaultPauseMs }}ms</span
-              >
+        <!-- Bottom Audio Player & Export Bar -->
+        <div
+          v-if="dialogueStore.audioUrl"
+          class="script-player-bar pa-3 border-t bg-surface d-flex flex-wrap align-center justify-space-between ga-3"
+        >
+          <div class="d-flex align-center ga-2" style="flex: 1; min-width: 280px">
+            <v-icon color="primary">mdi-music-box-outline</v-icon>
+            <audio :src="dialogueStore.audioUrl" controls style="flex: 1; height: 36px" />
+          </div>
+          <div class="d-flex align-center ga-2">
+            <v-btn
+              color="primary"
+              variant="flat"
+              size="small"
+              prepend-icon="mdi-download"
+              @click="exportAudioFile"
+            >
+              {{ $t("dialogue.actions.exportAudio") }}
+            </v-btn>
+            <v-btn
+              variant="outlined"
+              size="small"
+              prepend-icon="mdi-subtitles-outline"
+              @click="exportSubtitlesFile"
+            >
+              {{ $t("dialogue.actions.exportSubtitles") }}
+            </v-btn>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= TAB 2: 角色声优阵容 ================= -->
+      <div v-show="activeTab === 'cast'" class="studio-tab-pane studio-tab-pane--scroll pa-4">
+        <!-- Cast Header Actions -->
+        <div class="d-flex flex-wrap align-center justify-space-between mb-4 ga-3 flex-shrink-0">
+          <div>
+            <div class="text-subtitle-1 font-weight-bold">
+              {{ $t("dialogue.cast.title") }}
+              <span class="text-caption font-weight-regular text-medium-emphasis ml-1">
+                ({{ $t("dialogue.cast.roleCount", { count: dialogueStore.roles.length }) }})
+              </span>
+            </div>
+            <div class="text-caption text-medium-emphasis">
+              为剧本中的每位登场人物分配专属声音、语调与情感色彩。
             </div>
           </div>
 
-          <!-- Script Lines List -->
-          <div class="script-lines-scroll pa-4">
-            <template v-if="dialogueStore.lines.length > 0">
-              <div
-                v-for="(line, index) in dialogueStore.lines"
-                :key="line.id"
-                class="dialogue-line-card mb-3 pa-3 rounded-lg"
-                :style="{
-                  borderLeft: `4px solid var(--v-theme-${getRoleById(line.roleId).color})`,
-                }"
-              >
-                <div class="d-flex align-center justify-space-between mb-2">
-                  <div class="d-flex align-center ga-2">
-                    <span class="text-caption text-medium-emphasis font-weight-bold">
-                      #{{ index + 1 }}
-                    </span>
+          <div class="d-flex align-center ga-2">
+            <v-btn
+              color="primary"
+              variant="flat"
+              size="small"
+              prepend-icon="mdi-plus"
+              @click="openAddRoleDialog"
+            >
+              {{ $t("dialogue.cast.addRole") }}
+            </v-btn>
+          </div>
+        </div>
 
-                    <!-- Quick Role Switcher Menu -->
-                    <v-menu>
-                      <template #activator="{ props }">
-                        <v-btn
-                          v-bind="props"
-                          size="small"
-                          variant="tonal"
-                          :color="getRoleById(line.roleId).color"
-                          class="px-2 font-weight-bold"
-                          append-icon="mdi-chevron-down"
-                        >
-                          <v-avatar
-                            start
-                            size="18"
-                            :color="getRoleById(line.roleId).color"
-                            class="text-white text-caption mr-1"
-                          >
-                            {{ getRoleById(line.roleId).name.slice(0, 1) }}
-                          </v-avatar>
-                          {{ getRoleById(line.roleId).name }}
-                        </v-btn>
-                      </template>
-                      <v-list density="compact">
-                        <v-list-item
-                          v-for="r in dialogueStore.roles"
-                          :key="r.id"
-                          :title="r.name"
-                          :subtitle="r.voice.split('-').pop()"
-                          @click="dialogueStore.updateLine(line.id, { roleId: r.id })"
-                        >
-                          <template #prepend>
-                            <v-avatar
-                              size="20"
-                              :color="r.color"
-                              class="mr-2 text-white text-caption"
-                            >
-                              {{ r.name.slice(0, 1) }}
-                            </v-avatar>
-                          </template>
-                        </v-list-item>
-                      </v-list>
-                    </v-menu>
+        <!-- Cast Grid -->
+        <div class="cast-grid-scroll">
+          <v-row class="cast-grid">
+            <v-col
+              v-for="role in dialogueStore.roles"
+              :key="role.id"
+              cols="12"
+              sm="6"
+              md="4"
+              lg="3"
+            >
+              <v-card variant="outlined" class="role-grid-card h-100" rounded="lg">
+                <v-card-item class="pb-2">
+                  <template #prepend>
+                    <v-avatar :color="role.color" size="36" class="text-white font-weight-bold">
+                      {{ role.name.slice(0, 1) }}
+                    </v-avatar>
+                  </template>
 
-                    <!-- Pause Selector Menu -->
-                    <v-menu>
-                      <template #activator="{ props }">
-                        <v-chip
-                          v-bind="props"
-                          size="x-small"
-                          variant="outlined"
-                          class="text-caption cursor-pointer"
-                        >
-                          {{
-                            $t("dialogue.script.pauseAfter", {
-                              ms: line.pauseAfterMs || dialogueStore.defaultPauseMs,
-                            })
-                          }}
-                          <v-icon end size="12">mdi-clock-outline</v-icon>
-                        </v-chip>
-                      </template>
-                      <v-list density="compact">
-                        <v-list-item
-                          v-for="ms in pauseOptions"
-                          :key="ms"
-                          :title="`${ms} 毫秒`"
-                          @click="dialogueStore.updateLine(line.id, { pauseAfterMs: ms })"
-                        />
-                      </v-list>
-                    </v-menu>
-                  </div>
-
-                  <!-- Actions -->
-                  <div class="d-flex align-center ga-1">
-                    <v-btn
-                      icon
+                  <v-card-title class="text-subtitle-2 font-weight-bold d-flex align-center ga-1">
+                    <span class="text-truncate">{{ role.name }}</span>
+                    <v-chip
+                      v-if="role.isDefault"
                       size="x-small"
-                      variant="text"
                       color="primary"
-                      :loading="dialogueStore.auditioningLineId === line.id"
-                      :title="$t('dialogue.script.audition')"
-                      @click="dialogueStore.auditionLine(line.id)"
+                      variant="flat"
+                      class="px-1"
                     >
-                      <v-icon size="16">mdi-play</v-icon>
-                    </v-btn>
+                      {{ $t("dialogue.cast.defaultBadge") }}
+                    </v-chip>
+                  </v-card-title>
+                  <v-card-subtitle class="text-caption text-truncate">
+                    {{ role.voice.replace("Neural", "").split("-").pop() }}
+                  </v-card-subtitle>
+
+                  <template #append>
                     <v-btn
-                      icon="mdi-plus"
-                      size="x-small"
+                      icon="mdi-pencil-outline"
                       variant="text"
-                      :title="$t('dialogue.script.insertAfter')"
-                      @click="dialogueStore.insertLineAfter(index, line.roleId)"
+                      size="x-small"
+                      @click="openEditRoleDialog(role)"
                     />
                     <v-btn
                       icon="mdi-delete-outline"
-                      size="x-small"
                       variant="text"
+                      size="x-small"
                       color="error"
-                      :title="$t('dialogue.script.deleteLine')"
-                      @click="dialogueStore.removeLine(line.id)"
+                      :disabled="dialogueStore.roles.length <= 1"
+                      @click="deleteRole(role.id)"
                     />
+                  </template>
+                </v-card-item>
+
+                <v-divider />
+
+                <v-card-text class="pt-3 pb-2 text-caption">
+                  <div class="d-flex align-center justify-space-between mb-1.5">
+                    <span class="text-medium-emphasis">{{ $t("dialogue.cast.voice") }}</span>
+                    <span class="font-weight-medium text-truncate" style="max-width: 140px">
+                      {{ role.voice }}
+                    </span>
                   </div>
-                </div>
+                  <div class="d-flex align-center justify-space-between mb-1.5">
+                    <span class="text-medium-emphasis">{{ $t("dialogue.cast.rate") }}</span>
+                    <span>{{ role.rate >= 0 ? `+${role.rate}%` : `${role.rate}%` }}</span>
+                  </div>
+                  <div class="d-flex align-center justify-space-between mb-1.5">
+                    <span class="text-medium-emphasis">{{ $t("dialogue.cast.pitch") }}</span>
+                    <span>{{ role.pitch >= 0 ? `+${role.pitch}Hz` : `${role.pitch}Hz` }}</span>
+                  </div>
+                </v-card-text>
 
-                <v-textarea
-                  v-model="line.text"
-                  rows="2"
-                  auto-grow
-                  density="compact"
-                  variant="outlined"
-                  hide-details
-                  class="dialogue-textarea"
-                />
-              </div>
-            </template>
+                <v-divider />
 
-            <div v-else class="text-center py-12 text-medium-emphasis">
-              <v-icon size="48" class="mb-2">mdi-drama-masks</v-icon>
-              <div class="text-body-1 font-weight-medium">
-                {{ $t("dialogue.script.emptyTitle") }}
-              </div>
-              <div class="text-caption mb-4">
-                {{ $t("dialogue.script.emptyDescription") }}
-              </div>
-              <div class="d-flex align-center justify-center ga-2">
-                <v-btn
-                  color="primary"
-                  variant="flat"
-                  size="small"
-                  prepend-icon="mdi-script-text-outline"
-                  @click="showImportDialog = true"
-                >
-                  {{ $t("dialogue.script.importScript") }}
-                </v-btn>
-                <v-btn
-                  variant="outlined"
-                  size="small"
-                  prepend-icon="mdi-plus"
-                  @click="dialogueStore.addLine()"
-                >
-                  {{ $t("dialogue.script.addLine") }}
-                </v-btn>
-              </div>
-            </div>
-          </div>
+                <v-card-actions class="px-3 py-2 d-flex justify-space-between">
+                  <v-btn
+                    size="x-small"
+                    variant="tonal"
+                    color="primary"
+                    prepend-icon="mdi-plus"
+                    @click="
+                      dialogueStore.addLine(role.id);
+                      activeTab = 'script';
+                    "
+                  >
+                    撰写台词
+                  </v-btn>
+                  <v-btn
+                    size="x-small"
+                    variant="text"
+                    prepend-icon="mdi-tune"
+                    @click="openEditRoleDialog(role)"
+                  >
+                    配置
+                  </v-btn>
+                </v-card-actions>
+              </v-card>
+            </v-col>
 
-          <!-- Bottom Audio Player & Export Bar -->
-          <div
-            v-if="dialogueStore.audioUrl"
-            class="pa-3 border-t bg-surface d-flex flex-wrap align-center justify-space-between ga-3"
-          >
-            <div class="d-flex align-center ga-2" style="flex: 1; min-width: 280px">
-              <v-icon color="primary">mdi-music-box-outline</v-icon>
-              <audio :src="dialogueStore.audioUrl" controls style="flex: 1; height: 36px" />
-            </div>
-            <div class="d-flex align-center ga-2">
-              <v-btn
-                color="primary"
-                variant="flat"
-                size="small"
-                prepend-icon="mdi-download"
-                @click="exportAudioFile"
-              >
-                {{ $t("dialogue.actions.exportAudio") }}
-              </v-btn>
-              <v-btn
+            <!-- Add Role Placeholder Card -->
+            <v-col cols="12" sm="6" md="4" lg="3">
+              <v-card
                 variant="outlined"
-                size="small"
-                prepend-icon="mdi-subtitles-outline"
-                @click="exportSubtitlesFile"
-              >
-                {{ $t("dialogue.actions.exportSubtitles") }}
-              </v-btn>
-            </div>
-          </div>
-        </v-window-item>
-
-        <!-- ================= TAB 2: 角色声优阵容 ================= -->
-        <v-window-item value="cast" class="studio-window-item pa-4">
-          <!-- Cast Header Actions -->
-          <div class="d-flex flex-wrap align-center justify-space-between mb-4 ga-3">
-            <div>
-              <div class="text-subtitle-1 font-weight-bold">
-                {{ $t("dialogue.cast.title") }}
-                <span class="text-caption font-weight-regular text-medium-emphasis ml-1">
-                  ({{ $t("dialogue.cast.roleCount", { count: dialogueStore.roles.length }) }})
-                </span>
-              </div>
-              <div class="text-caption text-medium-emphasis">
-                为剧本中的每位登场人物分配专属声音、语调与情感色彩。
-              </div>
-            </div>
-
-            <div class="d-flex align-center ga-2">
-              <v-btn
-                color="primary"
-                variant="flat"
-                size="small"
-                prepend-icon="mdi-plus"
+                class="add-role-card h-100 d-flex flex-column align-center justify-center pa-6 cursor-pointer"
+                rounded="lg"
                 @click="openAddRoleDialog"
               >
-                {{ $t("dialogue.cast.addRole") }}
-              </v-btn>
+                <v-avatar color="primary" variant="tonal" size="44" class="mb-2">
+                  <v-icon size="24">mdi-plus</v-icon>
+                </v-avatar>
+                <div class="text-body-2 font-weight-bold">{{ $t("dialogue.cast.addRole") }}</div>
+                <div class="text-caption text-medium-emphasis">创建新登场人物</div>
+              </v-card>
+            </v-col>
+          </v-row>
+        </div>
+      </div>
+
+      <!-- ================= TAB 3: 背景音乐与混音 ================= -->
+      <div v-show="activeTab === 'bgm'" class="studio-tab-pane studio-tab-pane--scroll pa-4">
+        <div class="bgm-tab-container">
+          <BgmConfigCard :elevation="0" class="mb-4" />
+
+          <!-- Helpful mixing tips card -->
+          <v-card variant="outlined" rounded="lg" class="pa-4 bg-surface-variant-subtle">
+            <div class="d-flex align-center ga-2 mb-2">
+              <v-icon color="primary" size="20">mdi-lightbulb-on-outline</v-icon>
+              <span class="text-subtitle-2 font-weight-bold">广播剧混音与人声避让技巧</span>
             </div>
-          </div>
-
-          <!-- Cast Grid -->
-          <div class="cast-grid-scroll">
-            <v-row class="cast-grid">
-              <v-col
-                v-for="role in dialogueStore.roles"
-                :key="role.id"
-                cols="12"
-                sm="6"
-                md="4"
-                lg="3"
-              >
-                <v-card variant="outlined" class="role-grid-card h-100" rounded="lg">
-                  <v-card-item class="pb-2">
-                    <template #prepend>
-                      <v-avatar :color="role.color" size="36" class="text-white font-weight-bold">
-                        {{ role.name.slice(0, 1) }}
-                      </v-avatar>
-                    </template>
-
-                    <v-card-title class="text-subtitle-2 font-weight-bold d-flex align-center ga-1">
-                      <span class="text-truncate">{{ role.name }}</span>
-                      <v-chip
-                        v-if="role.isDefault"
-                        size="x-small"
-                        color="primary"
-                        variant="flat"
-                        class="px-1"
-                      >
-                        {{ $t("dialogue.cast.defaultBadge") }}
-                      </v-chip>
-                    </v-card-title>
-                    <v-card-subtitle class="text-caption text-truncate">
-                      {{ role.voice.replace("Neural", "").split("-").pop() }}
-                    </v-card-subtitle>
-
-                    <template #append>
-                      <v-btn
-                        icon="mdi-pencil-outline"
-                        variant="text"
-                        size="x-small"
-                        @click="openEditRoleDialog(role)"
-                      />
-                      <v-btn
-                        icon="mdi-delete-outline"
-                        variant="text"
-                        size="x-small"
-                        color="error"
-                        :disabled="dialogueStore.roles.length <= 1"
-                        @click="deleteRole(role.id)"
-                      />
-                    </template>
-                  </v-card-item>
-
-                  <v-divider />
-
-                  <v-card-text class="pt-3 pb-2 text-caption">
-                    <div class="d-flex align-center justify-space-between mb-1.5">
-                      <span class="text-medium-emphasis">{{ $t("dialogue.cast.voice") }}</span>
-                      <span class="font-weight-medium text-truncate" style="max-width: 140px">
-                        {{ role.voice }}
-                      </span>
-                    </div>
-                    <div class="d-flex align-center justify-space-between mb-1.5">
-                      <span class="text-medium-emphasis">{{ $t("dialogue.cast.rate") }}</span>
-                      <span>{{ role.rate >= 0 ? `+${role.rate}%` : `${role.rate}%` }}</span>
-                    </div>
-                    <div class="d-flex align-center justify-space-between mb-1.5">
-                      <span class="text-medium-emphasis">{{ $t("dialogue.cast.pitch") }}</span>
-                      <span>{{ role.pitch >= 0 ? `+${role.pitch}Hz` : `${role.pitch}Hz` }}</span>
-                    </div>
-                  </v-card-text>
-
-                  <v-divider />
-
-                  <v-card-actions class="px-3 py-2 d-flex justify-space-between">
-                    <v-btn
-                      size="x-small"
-                      variant="tonal"
-                      color="primary"
-                      prepend-icon="mdi-plus"
-                      @click="
-                        dialogueStore.addLine(role.id);
-                        activeTab = 'script';
-                      "
-                    >
-                      撰写台词
-                    </v-btn>
-                    <v-btn
-                      size="x-small"
-                      variant="text"
-                      prepend-icon="mdi-tune"
-                      @click="openEditRoleDialog(role)"
-                    >
-                      配置
-                    </v-btn>
-                  </v-card-actions>
-                </v-card>
-              </v-col>
-
-              <!-- Add Role Placeholder Card -->
-              <v-col cols="12" sm="6" md="4" lg="3">
-                <v-card
-                  variant="outlined"
-                  class="add-role-card h-100 d-flex flex-column align-center justify-center pa-6 cursor-pointer"
-                  rounded="lg"
-                  @click="openAddRoleDialog"
-                >
-                  <v-avatar color="primary" variant="tonal" size="44" class="mb-2">
-                    <v-icon size="24">mdi-plus</v-icon>
-                  </v-avatar>
-                  <div class="text-body-2 font-weight-bold">{{ $t("dialogue.cast.addRole") }}</div>
-                  <div class="text-caption text-medium-emphasis">创建新登场人物</div>
-                </v-card>
-              </v-col>
-            </v-row>
-          </div>
-        </v-window-item>
-
-        <!-- ================= TAB 3: 背景音乐与混音 ================= -->
-        <v-window-item value="bgm" class="studio-window-item pa-4">
-          <div class="bgm-tab-container">
-            <BgmConfigCard :elevation="0" class="mb-4" />
-
-            <!-- Helpful mixing tips card -->
-            <v-card variant="outlined" rounded="lg" class="pa-4 bg-surface-variant-subtle">
-              <div class="d-flex align-center ga-2 mb-2">
-                <v-icon color="primary" size="20">mdi-lightbulb-on-outline</v-icon>
-                <span class="text-subtitle-2 font-weight-bold">广播剧混音与人声避让技巧</span>
-              </div>
-              <ul class="text-caption text-medium-emphasis pl-4" style="line-height: 1.8">
-                <li>推荐选用 44.1kHz 的立体声轻音乐、OST 或环境音效作为背景伴奏。</li>
-                <li>
-                  <strong>人声智能避让（Audio Ducking）</strong
-                  >：说话时自动以侧链压缩压低伴奏音量（如标准
-                  -12dB），在对白停顿与全剧结尾时平滑回升，保证台词清晰自然。
-                </li>
-                <li>
-                  在「剧本台本工作台」点击「合成广播剧音频」后，点击「导出音频」将全自动完成混音并保存。
-                </li>
-              </ul>
-            </v-card>
-          </div>
-        </v-window-item>
-      </v-window>
+            <ul class="text-caption text-medium-emphasis pl-4" style="line-height: 1.8">
+              <li>推荐选用 44.1kHz 的立体声轻音乐、OST 或环境音效作为背景伴奏。</li>
+              <li>
+                <strong>人声智能避让（Audio Ducking）</strong
+                >：说话时自动以侧链压缩压低伴奏音量（如标准
+                -12dB），在对白停顿与全剧结尾时平滑回升，保证台词清晰自然。
+              </li>
+              <li>
+                在「剧本台本工作台」点击「合成广播剧音频」后，点击「导出音频」将全自动完成混音并保存。
+              </li>
+            </ul>
+          </v-card>
+        </div>
+      </div>
     </v-card>
 
     <!-- Script Import Modal -->
@@ -954,7 +948,7 @@ async function exportSubtitlesFile() {
   height: 100%;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow-y: auto;
   box-sizing: border-box;
 }
 
@@ -969,7 +963,7 @@ async function exportSubtitlesFile() {
   flex: 1;
   display: flex;
   flex-direction: column;
-  min-height: 0;
+  min-height: 400px;
   overflow: hidden;
   background: rgba(var(--v-theme-surface), 0.96);
   backdrop-filter: blur(16px);
@@ -981,19 +975,24 @@ async function exportSubtitlesFile() {
   flex-shrink: 0;
 }
 
-.studio-tab-window {
+.studio-tab-pane {
   flex: 1;
-  min-height: 0;
   display: flex;
   flex-direction: column;
+  min-height: 0;
   overflow: hidden;
 }
 
-.studio-window-item {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
+.studio-tab-pane--scroll {
+  overflow-y: auto;
+}
+
+.script-actions-bar {
+  flex-shrink: 0;
+}
+
+.script-player-bar {
+  flex-shrink: 0;
 }
 
 .bg-surface-variant-subtle {
@@ -1006,10 +1005,29 @@ async function exportSubtitlesFile() {
   min-height: 0;
 }
 
+.script-lines-scroll,
+.studio-tab-pane--scroll {
+  scrollbar-gutter: stable;
+}
+
+.script-lines-scroll::-webkit-scrollbar,
+.studio-tab-pane--scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.script-lines-scroll::-webkit-scrollbar-thumb,
+.studio-tab-pane--scroll::-webkit-scrollbar-thumb {
+  background-color: rgba(var(--v-theme-on-surface), 0.2);
+  border-radius: 4px;
+}
+
+.script-lines-scroll:hover::-webkit-scrollbar-thumb,
+.studio-tab-pane--scroll:hover::-webkit-scrollbar-thumb {
+  background-color: rgba(var(--v-theme-on-surface), 0.45);
+}
+
 .cast-grid-scroll {
-  flex: 1;
-  overflow-y: auto;
-  min-height: 0;
+  width: 100%;
 }
 
 .dialogue-line-card {
