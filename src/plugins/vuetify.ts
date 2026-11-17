@@ -4,6 +4,7 @@ import { createVuetify } from "vuetify";
 import {
   VAlert,
   VApp,
+  VAutocomplete,
   VAppBar,
   VAvatar,
   VBadge,
@@ -53,6 +54,7 @@ export const vuetify = createVuetify({
   components: {
     VAlert,
     VApp,
+    VAutocomplete,
     VAppBar,
     VAvatar,
     VBadge,

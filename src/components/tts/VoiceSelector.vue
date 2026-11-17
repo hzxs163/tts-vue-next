@@ -5,6 +5,7 @@ import { useI18n } from "vue-i18n";
 import { OPENAI_LOCALE, useVoicesStore } from "../../stores/voices";
 import { useSettingsStore } from "../../stores/settings";
 import type { TtsProviderId } from "../../types";
+import { voiceGenderKey, voiceLabel } from "../../utils/voiceLabels";
 
 const voicesStore = useVoicesStore();
 const settingsStore = useSettingsStore();
@@ -79,20 +80,66 @@ const localeItems = computed(() =>
   })),
 );
 
-const voiceItems = computed(() => {
+/**
+ * Rows of the voice picker.
+ *
+ * `title` is the cleaned display name and `code` the voice id without its
+ * locale prefix, so the menu can show both on separate lines while the closed
+ * field stays on one short line. `filterKeys` lets the search match either.
+ */
+const voiceItems = computed<VoiceRow[]>(() => {
   let list = voicesStore.filteredVoices;
   if (showFavoritesOnly.value) {
     list = list.filter((voice) => voicesStore.isFavorite(voice.ShortName));
   }
 
-  return list.map((voice) => {
-    const isFav = voicesStore.isFavorite(voice.ShortName);
-    return {
-      title: `${isFav ? "⭐ " : ""}${voice.FriendlyName || voice.ShortName} (${voice.Gender})`,
-      value: voice.ShortName,
-    };
-  });
+  return list.map((voice) => ({
+    title: voiceLabel(voice),
+    // The menu shows the untouched id so nothing is hidden from the user.
+    code: voice.ShortName,
+    gender: voiceGenderKey(voice),
+    value: voice.ShortName,
+  }));
 });
+
+interface VoiceRow {
+  title: string;
+  code: string;
+  gender: "female" | "male" | null;
+  value: string;
+}
+
+/** The row matching the current selection, for the closed field. */
+const selectedVoiceItem = computed<VoiceRow | null>(
+  () => voiceItems.value.find((item) => item.value === voicesStore.selectedVoice) ?? null,
+);
+
+/** Full id, used as the native tooltip of the closed field. */
+const selectedVoiceTitle = computed(
+  () =>
+    voicesStore.currentVoice?.ShortName ??
+    selectedVoiceItem.value?.value ??
+    voicesStore.selectedVoice,
+);
+
+function genderLabel(gender: "female" | "male" | null): string {
+  if (gender === "female") {
+    return t("tts.options.genderFemale");
+  }
+  if (gender === "male") {
+    return t("tts.options.genderMale");
+  }
+  return "";
+}
+
+/** Toggles a favourite from inside the menu without selecting the row. */
+function toggleFavoriteRow(value: string) {
+  voicesStore.toggleFavorite(value);
+}
+
+function isRowFavorite(value: string): boolean {
+  return voicesStore.isFavorite(value);
+}
 
 function toggleCurrentFavorite() {
   voicesStore.toggleFavorite(voicesStore.selectedVoice);
@@ -218,46 +265,85 @@ async function togglePreview() {
           size="x-small"
           :variant="showFavoritesOnly ? 'tonal' : 'text'"
           :color="showFavoritesOnly ? 'amber-darken-2' : undefined"
-          prepend-icon="mdi-star"
           @click="showFavoritesOnly = true"
         >
-          {{ favoriteCount }}
+          {{ $t("tts.options.favoriteCount", { count: favoriteCount }) }}
         </v-btn>
       </div>
     </div>
 
-    <div class="d-flex align-center ga-2">
-      <v-select
+    <div class="voice-selector__row">
+      <v-autocomplete
         v-model="selectedVoice"
         :items="voiceItems"
+        item-title="title"
+        item-value="value"
         :loading="voicesStore.loading"
-        prepend-inner-icon="mdi-account-voice"
+        :filter-keys="['title', 'code', 'value']"
+        :title="selectedVoiceTitle"
+        :menu-props="{ maxHeight: 380 }"
+        :no-data-text="$t('tts.options.noVoiceMatch')"
         density="comfortable"
-        class="flex-grow-1"
+        class="voice-selector__field"
         hide-details
-      />
+      >
+        <template #item="{ props: itemProps, item }">
+          <v-list-item v-bind="itemProps" class="voice-selector__option">
+            <template #prepend>
+              <v-icon size="18" class="voice-selector__option-icon">
+                {{ item.raw.gender === "male" ? "mdi-account-voice" : "mdi-account-voice" }}
+              </v-icon>
+            </template>
+
+            <template #title>
+              <div class="voice-selector__option-title">
+                <span class="voice-selector__option-name">{{ item.raw.title }}</span>
+                <span v-if="item.raw.gender" class="voice-selector__badge">
+                  {{ genderLabel(item.raw.gender) }}
+                </span>
+              </div>
+            </template>
+
+            <template #subtitle>
+              <span class="voice-selector__option-code">{{ item.raw.code }}</span>
+            </template>
+
+            <template #append>
+              <v-btn
+                :icon="isRowFavorite(item.raw.value) ? 'mdi-star' : 'mdi-star-outline'"
+                size="small"
+                variant="text"
+                :color="isRowFavorite(item.raw.value) ? 'amber-darken-2' : undefined"
+                @click.stop="toggleFavoriteRow(item.raw.value)"
+              />
+            </template>
+          </v-list-item>
+        </template>
+      </v-autocomplete>
 
       <v-btn
         icon
-        size="small"
+        size="default"
         variant="tonal"
+        class="voice-selector__action"
         :color="isCurrentFavorite ? 'amber-darken-2' : undefined"
         :title="isCurrentFavorite ? $t('tts.options.unfavorite') : $t('tts.options.favorite')"
         @click="toggleCurrentFavorite"
       >
-        <v-icon>{{ isCurrentFavorite ? "mdi-star" : "mdi-star-outline" }}</v-icon>
+        <v-icon size="20">{{ isCurrentFavorite ? "mdi-star" : "mdi-star-outline" }}</v-icon>
       </v-btn>
 
       <v-btn
         icon
-        size="small"
+        size="default"
         variant="tonal"
         color="primary"
+        class="voice-selector__action"
         :loading="previewLoading"
         :title="previewPlaying ? $t('tts.options.stop') : $t('tts.options.previewVoice')"
         @click="togglePreview"
       >
-        <v-icon>{{ previewPlaying ? "mdi-stop" : "mdi-play" }}</v-icon>
+        <v-icon size="20">{{ previewPlaying ? "mdi-stop" : "mdi-play" }}</v-icon>
       </v-btn>
     </div>
 
@@ -268,6 +354,80 @@ async function togglePreview() {
 </template>
 
 <style scoped>
+.voice-selector__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.voice-selector__field {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.voice-selector__selected {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * 40px buttons line up with the height of a comfortable field. The icon needs
+ * an explicit line-height: the glyph otherwise inherits the button's line box
+ * and sits above the optical centre.
+ */
+.voice-selector__action {
+  flex: 0 0 auto;
+}
+
+.voice-selector__action :deep(.v-icon) {
+  line-height: 1;
+}
+
+.voice-selector__option {
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.voice-selector__option-icon {
+  opacity: 0.6;
+  margin-right: 12px;
+}
+
+.voice-selector__option-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.voice-selector__option-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.voice-selector__badge {
+  flex: none;
+  padding: 0 5px;
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 16px;
+  background: rgba(var(--v-border-color), 0.12);
+  color: rgb(var(--v-theme-on-surface));
+  opacity: 0.75;
+}
+
+.voice-selector__option-code {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  opacity: 0.7;
+}
+
 .voice-selector__cache-hint {
   margin: 8px 0 0;
   font-size: 12px;
