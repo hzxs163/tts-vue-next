@@ -1,6 +1,13 @@
 import { defineStore } from "pinia";
 import { invoke } from "@tauri-apps/api/core";
-import type { DialogueLine, DialogueRole, SubtitleCue, TtsParams } from "../types";
+import type {
+  AzureCredentials,
+  DialogueLine,
+  DialogueRole,
+  SubtitleCue,
+  TtsParams,
+  TtsProviderId,
+} from "../types";
 import {
   DEFAULT_CAST_PRESETS,
   INITIAL_ROLES,
@@ -10,6 +17,7 @@ import { parseScript } from "../utils/dialogueParser";
 import { concatUint8Arrays, generateSilentMp3Bytes } from "../utils/audioConcat";
 import { cuesToSrt, cuesToVtt, shiftCues } from "../utils/subtitles";
 import { useDictionaryStore } from "./dictionary";
+import { useSettingsStore } from "./settings";
 import { toErrorMessage } from "../utils/ttsErrors";
 
 const ROLES_STORAGE_KEY = "tts_dialogue_roles_v1";
@@ -17,6 +25,29 @@ const LINES_STORAGE_KEY = "tts_dialogue_lines_v1";
 const EDGE_TTS_FORMAT = "audio-24khz-48kbitrate-mono-mp3";
 // 48kbps mono MP3 is 6000 bytes per second (6 bytes per millisecond)
 const BYTES_PER_MS = 48000 / 8 / 1000;
+
+/**
+ * Azure resource of the settings, or `null` when the role should fall back to
+ * the free Edge endpoint.
+ *
+ * The key lives in the settings store; it is passed through to the Rust side
+ * on every request instead of being persisted there.
+ */
+function azureCredentialsFor(role: DialogueRole | undefined): AzureCredentials | null {
+  if (role?.provider !== "azure") {
+    return null;
+  }
+  const settings = useSettingsStore();
+  if (!settings.azureEnabled || !settings.azureKey || !settings.azureRegion) {
+    return null;
+  }
+  return { key: settings.azureKey, region: settings.azureRegion };
+}
+
+/** Resolves the provider a role should be synthesized with. */
+function providerFor(role: DialogueRole | undefined): TtsProviderId {
+  return azureCredentialsFor(role) ? "azure" : "edge";
+}
 
 function normalizeRoleName(name: string): string {
   return name.trim().toLowerCase();
@@ -328,6 +359,8 @@ export const useDialogueStore = defineStore("dialogue", {
           task_id: crypto.randomUUID(),
           max_retries: 2,
           chunk_concurrency: 1,
+          provider: providerFor(role),
+          azure: azureCredentialsFor(role),
         };
 
         const buffer = await invoke<ArrayBuffer>("tts_convert", { params });
@@ -438,6 +471,8 @@ export const useDialogueStore = defineStore("dialogue", {
             task_id: taskId,
             max_retries: 3,
             chunk_concurrency: 1,
+            provider: providerFor(role),
+            azure: azureCredentialsFor(role),
           };
 
           let audioChunk: Uint8Array;

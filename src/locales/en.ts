@@ -223,9 +223,23 @@ export default {
       description:
         "Choose where converted audio is saved and how aggressively batch jobs should run.",
     },
+    azure: {
+      enabled: "Enable Azure Speech",
+      region: "Region",
+      regionPlaceholder: "e.g. eastasia",
+      key: "Subscription key",
+      verify: "Verify and load voices",
+      verified: "Verified: {count} voices available",
+      verifyFailed: "Verification failed: {message}",
+      voiceCount: "{count} voices ready",
+      storageHint:
+        "The key is stored in the local settings file in plain text. It is never written to logs and is masked in the UI by default.",
+    },
+
     sections: {
       output: "Output",
       processing: "Processing",
+      azure: "Third-party speech service",
       about: "About",
     },
     fields: {
@@ -278,6 +292,9 @@ export default {
       editRole: "Configure Role",
       deleteRole: "Delete Role",
       roleName: "Role Name",
+      provider: "Speech provider",
+      providerEdge: "Edge (free voices)",
+      providerAzure: "Azure Speech",
       locale: "Language / Region",
       localeOption: "{locale} ({count} voices)",
       noVoiceInLocale: "No voices in this language",

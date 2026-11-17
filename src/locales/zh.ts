@@ -217,9 +217,22 @@ export default {
       title: "调整输出和处理行为",
       description: "选择转换音频的保存位置，并设置批量任务的执行强度。",
     },
+    azure: {
+      enabled: "启用 Azure 语音服务",
+      region: "区域",
+      regionPlaceholder: "例如 eastasia",
+      key: "订阅密钥",
+      verify: "验证并获取音色",
+      verified: "验证成功，共 {count} 个可用音色",
+      verifyFailed: "验证失败：{message}",
+      voiceCount: "{count} 个音色已就绪",
+      storageHint: "密钥保存在本机设置文件中（明文）。它不会写入日志，界面默认掩码显示。",
+    },
+
     sections: {
       output: "输出",
       processing: "处理",
+      azure: "第三方语音服务",
       about: "关于",
     },
     fields: {
@@ -272,6 +285,9 @@ export default {
       editRole: "配置角色",
       deleteRole: "删除角色",
       roleName: "角色姓名",
+      provider: "语音服务商",
+      providerEdge: "Edge 免费音色",
+      providerAzure: "Azure 语音服务",
       locale: "语言 / 地区",
       localeOption: "{locale}（{count} 个音色）",
       noVoiceInLocale: "该语言下暂无音色",

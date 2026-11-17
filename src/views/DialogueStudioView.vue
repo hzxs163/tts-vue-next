@@ -4,7 +4,7 @@ import { save } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { useI18n } from "vue-i18n";
 import { useMessage } from "vuetify-message-vue3";
-import type { DialogueRole } from "../types";
+import type { DialogueRole, TtsProviderId } from "../types";
 import { DEFAULT_CAST_PRESETS } from "../constants/dialoguePresets";
 import { useDialogueStore } from "../stores/dialogue";
 import { useVoicesStore } from "../stores/voices";
@@ -36,6 +36,7 @@ const editingRoleId = ref("");
 const roleFormName = ref("");
 const roleFormVoice = ref("");
 const roleFormLocale = ref("");
+const roleFormProvider = ref<TtsProviderId>("edge");
 const roleFormRate = ref(0);
 const roleFormPitch = ref(0);
 const roleFormVolume = ref(0);
@@ -83,14 +84,45 @@ const presetOptions = computed(() =>
 const PREFERRED_LOCALES = ["zh-CN", "zh-TW", "zh-HK", "en-US", "en-GB", "ja-JP", "ko-KR"];
 
 /**
- * Every locale in the catalog, with the number of voices it provides.
+ * Voice catalogs of the two providers, grouped by locale.
+ *
+ * The cast picker reads from whichever provider the role is assigned to, so
+ * characters may speak through different services in the same drama.
+ */
+const activeVoiceGroups = computed(() =>
+  roleFormProvider.value === "azure" ? voicesStore.azureVoicesByLocale : voicesStore.voicesByLocale,
+);
+
+/** Whether Azure can be offered at all. */
+const azureAvailable = computed(
+  () =>
+    settingsStore.azureEnabled &&
+    Boolean(settingsStore.azureKey) &&
+    Boolean(settingsStore.azureRegion),
+);
+
+const providerOptions = computed(() => {
+  const options: Array<{ title: string; value: TtsProviderId; subtitle?: string }> = [
+    { title: t("dialogue.cast.providerEdge"), value: "edge" },
+  ];
+  if (azureAvailable.value) {
+    options.push({
+      title: t("dialogue.cast.providerAzure"),
+      value: "azure",
+    });
+  }
+  return options;
+});
+
+/**
+ * Every locale of the active catalog, with the number of voices it provides.
  *
  * Selecting the locale here belongs to the role being edited. It used to be
  * inherited from the single-speaker panel, which meant assigning an English
  * voice to one character forced every other role to become English too.
  */
 const localeOptions = computed(() => {
-  const groups = voicesStore.voicesByLocale;
+  const groups = activeVoiceGroups.value;
   const byLocale = new Map(groups.map((voices) => [voices[0].Locale, voices.length]));
 
   const order = [
@@ -106,9 +138,7 @@ const localeOptions = computed(() => {
 
 /** Voices of the locale currently chosen in the role dialog. */
 const voiceOptions = computed(() => {
-  const voices = voicesStore.voicesByLocale.find(
-    (group) => group[0].Locale === roleFormLocale.value,
-  );
+  const voices = activeVoiceGroups.value.find((group) => group[0].Locale === roleFormLocale.value);
   if (!voices) {
     return [];
   }
@@ -119,21 +149,18 @@ const voiceOptions = computed(() => {
 });
 
 /**
- * The locale of a voice. Prefers the catalog, falls back to the locale prefix
+ * The locale of a voice. Prefers both catalogs, falls back to the locale prefix
  * of an Edge voice id (`zh-CN-YunxiNeural`), so the cast still renders its
- * language before the catalog has finished loading.
+ * language before a catalog has finished loading.
  */
 function localeOfVoice(shortName: string): string {
-  const fromCatalog = voicesStore.voices.find((voice) => voice.ShortName === shortName)?.Locale;
+  const fromCatalog =
+    voicesStore.voices.find((voice) => voice.ShortName === shortName)?.Locale ??
+    voicesStore.azureVoices.find((voice) => voice.ShortName === shortName)?.Locale;
   if (fromCatalog) {
     return fromCatalog;
   }
   return /^([a-z]{2,3}-[A-Za-z]{2,4})-/.exec(shortName)?.[1] ?? "";
-}
-
-/** Locale shown on a role card, independent of catalog load timing. */
-function roleLocale(role: DialogueRole): string {
-  return role.locale || localeOfVoice(role.voice) || "—";
 }
 
 function pickDefaultLocale(): string {
@@ -141,20 +168,18 @@ function pickDefaultLocale(): string {
   // character defaults to the same language as the first one.
   const lastRole = dialogueStore.roles[dialogueStore.roles.length - 1];
   const fromLastRole = lastRole ? localeOfVoice(lastRole.voice) : "";
-  if (fromLastRole) {
+  if (fromLastRole && activeVoiceGroups.value.some((group) => group[0].Locale === fromLastRole)) {
     return fromLastRole;
   }
   const firstPreferred = PREFERRED_LOCALES.find((locale) =>
-    voicesStore.voicesByLocale.some((group) => group[0].Locale === locale),
+    activeVoiceGroups.value.some((group) => group[0].Locale === locale),
   );
-  return firstPreferred ?? voicesStore.voicesByLocale[0]?.[0]?.Locale ?? "";
+  return firstPreferred ?? activeVoiceGroups.value[0]?.[0]?.Locale ?? roleFormLocale.value;
 }
 
-/** Keeps the voice valid whenever the locale changes. */
+/** Keeps the voice valid whenever the provider or the locale changes. */
 function syncVoiceToLocale() {
-  const voices = voicesStore.voicesByLocale.find(
-    (group) => group[0].Locale === roleFormLocale.value,
-  );
+  const voices = activeVoiceGroups.value.find((group) => group[0].Locale === roleFormLocale.value);
   if (!voices || voices.length === 0) {
     return;
   }
@@ -162,6 +187,18 @@ function syncVoiceToLocale() {
   if (!stillValid) {
     roleFormVoice.value = voices[0].ShortName;
   }
+}
+
+/** Switching the provider invalidates both the locale and the voice. */
+function handleProviderChange() {
+  roleFormLocale.value = pickDefaultLocale();
+  roleFormVoice.value = "";
+  syncVoiceToLocale();
+}
+
+/** Locale shown on a role card, independent of catalog load timing. */
+function roleLocale(role: DialogueRole): string {
+  return role.locale || localeOfVoice(role.voice) || "—";
 }
 
 /**
@@ -195,6 +232,7 @@ function openAddRoleDialog() {
   isEditingRole.value = false;
   editingRoleId.value = "";
   roleFormName.value = "";
+  roleFormProvider.value = "edge";
   roleFormLocale.value = pickDefaultLocale();
   syncVoiceToLocale();
   roleFormRate.value = 0;
@@ -209,6 +247,7 @@ function openEditRoleDialog(role: DialogueRole) {
   isEditingRole.value = true;
   editingRoleId.value = role.id;
   roleFormName.value = role.name;
+  roleFormProvider.value = role.provider === "azure" && azureAvailable.value ? "azure" : "edge";
   roleFormVoice.value = role.voice;
   // Derive the locale from the role's own voice instead of the panel, so the
   // dialog reflects the character rather than the last single-speaker pick.
@@ -233,6 +272,7 @@ function saveRole() {
     name,
     voice: roleFormVoice.value,
     locale: roleFormLocale.value,
+    provider: roleFormProvider.value,
     rate: roleFormRate.value,
     pitch: roleFormPitch.value,
     volume: roleFormVolume.value,
@@ -1080,6 +1120,17 @@ async function exportSubtitlesFile(format: "srt" | "vtt" = "srt") {
             density="compact"
             class="mb-3"
             placeholder="例如：萧炎"
+          />
+
+          <v-select
+            v-if="providerOptions.length > 1"
+            v-model="roleFormProvider"
+            :items="providerOptions"
+            :label="$t('dialogue.cast.provider')"
+            variant="outlined"
+            density="compact"
+            class="mb-3"
+            @update:model-value="handleProviderChange"
           />
 
           <v-select

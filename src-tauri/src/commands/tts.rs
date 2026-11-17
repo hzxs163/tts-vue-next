@@ -8,8 +8,12 @@ use tokio::sync::{watch, Mutex};
 use crate::commands::error::CommandError;
 use crate::edge_tts::constants::DEFAULT_OUTPUT_FORMAT;
 use crate::edge_tts::errors::EdgeTTSError;
-use crate::edge_tts::types::{SubtitleTrack, TTSConfig};
+use crate::edge_tts::split_text::plan_synthesis_chunks;
+use crate::edge_tts::ssml::{build_ssml, generate_silent_mp3, xml_escape};
+use crate::edge_tts::subtitles::build_subtitle_track;
+use crate::edge_tts::types::{SubtitleCue, SubtitleTrack, SynthesisChunk, TTSConfig};
 use crate::edge_tts::Communicate;
+use crate::tts_provider::{azure, AzureCredentials, TtsProvider};
 use crate::utils::retry::{retry_with_backoff, RetryOutcome};
 
 const PROGRESS_EVENT: &str = "tts://progress";
@@ -62,6 +66,12 @@ pub struct TtsConvertParams {
     /// Number of text chunks synthesized in parallel; clamped in `Communicate`.
     #[serde(default = "default_chunk_concurrency")]
     pub chunk_concurrency: usize,
+    /// Which service performs the synthesis. Defaults to the free Edge endpoint.
+    #[serde(default)]
+    pub provider: TtsProvider,
+    /// Required when `provider` is `azure`.
+    #[serde(default)]
+    pub azure: Option<AzureCredentials>,
 }
 
 fn default_format() -> String {
@@ -126,7 +136,143 @@ pub async fn tts_get_subtitles(task_id: String) -> Result<Option<SubtitleTrack>,
 async fn synthesize<F>(
     params: TtsConvertParams,
     on_progress: F,
-) -> Result<(Vec<u8>, crate::edge_tts::types::SubtitleTrack), EdgeTTSError>
+) -> Result<(Vec<u8>, SubtitleTrack), EdgeTTSError>
+where
+    F: Fn(usize, usize) + Send + Sync + Clone + 'static,
+{
+    match params.provider {
+        TtsProvider::Azure => synthesize_with_azure(params, on_progress).await,
+        TtsProvider::Edge => synthesize_with_edge(params, on_progress).await,
+    }
+}
+
+/// Bytes per millisecond of the 48 kbps mono MP3 the Edge and Azure endpoints
+/// both produce. Used to derive how long a synthesized chunk lasts.
+const BYTES_PER_MS: u64 = 6;
+
+/// Length of an encoded chunk, derived from its size.
+///
+/// 48 kbps mono means 6000 bytes per second, i.e. 6 bytes per millisecond.
+fn duration_ms_from_bytes(bytes: usize) -> u64 {
+    (bytes as u64) / BYTES_PER_MS
+}
+
+/// Synthesizes through a paid Azure resource over REST.
+///
+/// Azure's REST API does not emit word boundaries, so the subtitle timing is
+/// derived from the encoded audio length: one cue per text chunk, spanning the
+/// whole chunk. That is coarser than the Edge path but keeps every line
+/// subtitled instead of dropping the cues entirely.
+async fn synthesize_with_azure<F>(
+    params: TtsConvertParams,
+    on_progress: F,
+) -> Result<(Vec<u8>, SubtitleTrack), EdgeTTSError>
+where
+    F: Fn(usize, usize) + Send + Sync + Clone + 'static,
+{
+    let credentials = params.azure.clone().ok_or_else(|| {
+        EdgeTTSError::ConnectionError("Azure credentials were not provided".into())
+    })?;
+
+    let config = TTSConfig {
+        voice: params.voice,
+        rate: params.rate,
+        pitch: params.pitch,
+        volume: params.volume,
+        output_format: params.format,
+    };
+
+    let chunks = plan_synthesis_chunks(&params.text);
+    let total = chunks
+        .iter()
+        .filter(|chunk| matches!(chunk, SynthesisChunk::Text(_)))
+        .count();
+
+    let (cancel_tx, cancel_rx) = watch::channel(false);
+    let task_id = params.task_id.clone();
+    {
+        let mut tasks = ACTIVE_TASKS.lock().await;
+        if tasks.contains_key(&task_id) {
+            return Err(EdgeTTSError::TaskAlreadyExists(task_id));
+        }
+        tasks.insert(task_id.clone(), cancel_tx);
+    }
+
+    let outcome = run_azure_chunks(
+        &credentials,
+        &config,
+        chunks,
+        total,
+        &cancel_rx,
+        &on_progress,
+    )
+    .await;
+
+    // Always deregister, including on failure, so a retry of the same task id
+    // is not rejected as "already exists".
+    ACTIVE_TASKS.lock().await.remove(&task_id);
+    outcome
+}
+
+async fn run_azure_chunks<F>(
+    credentials: &AzureCredentials,
+    config: &TTSConfig,
+    chunks: Vec<SynthesisChunk>,
+    total: usize,
+    cancel_rx: &watch::Receiver<bool>,
+    on_progress: &F,
+) -> Result<(Vec<u8>, SubtitleTrack), EdgeTTSError>
+where
+    F: Fn(usize, usize) + Send + Sync,
+{
+    let mut audio: Vec<u8> = Vec::new();
+    let mut cues: Vec<SubtitleCue> = Vec::new();
+    let mut elapsed_ms: u64 = 0;
+    let mut completed = 0usize;
+
+    for chunk in chunks {
+        if *cancel_rx.borrow() {
+            return Err(EdgeTTSError::Cancelled);
+        }
+
+        match chunk {
+            SynthesisChunk::Silence(ms) => {
+                audio.extend_from_slice(&generate_silent_mp3(ms));
+                elapsed_ms += ms;
+            }
+            SynthesisChunk::Text(text) => {
+                let ssml = build_ssml(config, &xml_escape(&text));
+                let bytes = azure::synthesize(credentials, &ssml, &config.output_format).await?;
+
+                let duration_ms = duration_ms_from_bytes(bytes.len());
+                cues.push(SubtitleCue {
+                    // Offsets are 100 ns ticks, matching the Edge word boundaries.
+                    offset: elapsed_ms * 10_000,
+                    duration: duration_ms * 10_000,
+                    start_ms: elapsed_ms,
+                    end_ms: elapsed_ms + duration_ms,
+                    text,
+                });
+
+                audio.extend_from_slice(&bytes);
+                elapsed_ms += duration_ms;
+                completed += 1;
+                on_progress(completed, total);
+            }
+        }
+    }
+
+    if audio.is_empty() {
+        return Err(EdgeTTSError::NoAudioReceived);
+    }
+
+    Ok((audio, build_subtitle_track(cues)))
+}
+
+async fn synthesize_with_edge<F>(
+    params: TtsConvertParams,
+    on_progress: F,
+) -> Result<(Vec<u8>, SubtitleTrack), EdgeTTSError>
 where
     F: Fn(usize, usize) + Send + Sync + Clone + 'static,
 {
@@ -219,6 +365,16 @@ mod tests {
 
     static TEST_MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
+    #[test]
+    fn test_duration_ms_from_bytes_matches_the_48kbps_frame_math() {
+        // One second of 48 kbps mono audio is 6000 bytes.
+        assert_eq!(duration_ms_from_bytes(6_000), 1_000);
+        // The silent frame generator produces 144 byte frames every 24 ms,
+        // which has to agree with the same constant.
+        assert_eq!(duration_ms_from_bytes(144), 24);
+        assert_eq!(duration_ms_from_bytes(0), 0);
+    }
+
     #[tokio::test]
     async fn test_run_tts_convert_registers_task_retries_and_unregisters_on_success() {
         let _guard = TEST_MUTEX.lock().await;
@@ -234,6 +390,8 @@ mod tests {
             task_id: "task-1".to_string(),
             max_retries: 1,
             chunk_concurrency: 1,
+            provider: TtsProvider::Edge,
+            azure: None,
         };
 
         let result = run_tts_convert(params, 0, {
@@ -280,6 +438,8 @@ mod tests {
             task_id: "task-error".to_string(),
             max_retries: 1,
             chunk_concurrency: 1,
+            provider: TtsProvider::Edge,
+            azure: None,
         };
 
         let error = run_tts_convert(params, 0, |_, _, _| async {
@@ -307,6 +467,8 @@ mod tests {
             task_id: "task-cancelled".to_string(),
             max_retries: 3,
             chunk_concurrency: 1,
+            provider: TtsProvider::Edge,
+            azure: None,
         };
 
         let error = run_tts_convert(params, 0, {
@@ -342,6 +504,8 @@ mod tests {
             task_id: "task-forbidden".to_string(),
             max_retries: 5,
             chunk_concurrency: 1,
+            provider: TtsProvider::Edge,
+            azure: None,
         };
 
         let error = run_tts_convert(params, 0, {
@@ -382,6 +546,8 @@ mod tests {
             task_id: "task-duplicate".to_string(),
             max_retries: 1,
             chunk_concurrency: 1,
+            provider: TtsProvider::Edge,
+            azure: None,
         };
 
         let error = run_tts_convert(params, 0, |_, _, _| async { Ok(vec![1]) })
@@ -510,6 +676,8 @@ mod tests {
             task_id: format!("live-probe-{}", Uuid::new_v4()),
             max_retries: 1,
             chunk_concurrency: 1,
+            provider: TtsProvider::Edge,
+            azure: None,
         };
 
         let (audio, subtitles) = synthesize(params, |_: usize, _: usize| {})

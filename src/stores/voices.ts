@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import { invoke } from "@tauri-apps/api/core";
-import type { Voice } from "../types";
+import type { AzureCredentials, Voice } from "../types";
 
 const VOICE_CACHE_KEY = "tts_voices_cache_v1";
 
@@ -18,6 +18,10 @@ interface VoicesState {
   selectedLocale: string;
   selectedVoice: string;
   favorites: string[];
+  /** Voices of the configured Azure resource, empty until it is verified. */
+  azureVoices: Voice[];
+  azureLoading: boolean;
+  azureError: string | null;
 }
 
 function readVoiceCache(): VoiceCache | null {
@@ -56,6 +60,34 @@ function writeVoiceCache(voices: Voice[]): void {
   } catch {
     return;
   }
+}
+
+/**
+ * Groups a voice list by locale. Shared by the Edge and Azure catalogs so both
+ * behave the same in the cast picker.
+ */
+function groupVoicesByLocale(voices: Voice[]): Voice[][] {
+  const groups = new Map<string, Voice[]>();
+
+  for (const voice of voices) {
+    const list = groups.get(voice.Locale);
+    if (list) {
+      list.push(voice);
+    } else {
+      groups.set(voice.Locale, [voice]);
+    }
+  }
+
+  return [...groups.keys()]
+    .sort((a, b) => a.localeCompare(b))
+    .map((locale) =>
+      groups
+        .get(locale)!
+        .slice()
+        .sort((a, b) =>
+          (a.FriendlyName || a.ShortName).localeCompare(b.FriendlyName || b.ShortName),
+        ),
+    );
 }
 
 function resolveSelection(
@@ -108,6 +140,9 @@ export const useVoicesStore = defineStore("voices", {
     selectedLocale: "zh-CN",
     selectedVoice: "zh-CN-XiaoxiaoNeural",
     favorites: [],
+    azureVoices: [],
+    azureLoading: false,
+    azureError: null,
   }),
 
   getters: {
@@ -140,27 +175,12 @@ export const useVoicesStore = defineStore("voices", {
      * voice next to a Chinese one.
      */
     voicesByLocale(): Voice[][] {
-      const groups = new Map<string, Voice[]>();
+      return groupVoicesByLocale(this.voices);
+    },
 
-      for (const voice of this.voices) {
-        const list = groups.get(voice.Locale);
-        if (list) {
-          list.push(voice);
-        } else {
-          groups.set(voice.Locale, [voice]);
-        }
-      }
-
-      return [...groups.keys()]
-        .sort((a, b) => a.localeCompare(b))
-        .map((locale) =>
-          groups
-            .get(locale)!
-            .slice()
-            .sort((a, b) =>
-              (a.FriendlyName || a.ShortName).localeCompare(b.FriendlyName || b.ShortName),
-            ),
-        );
+    /** The Azure catalog grouped the same way as the Edge one. */
+    azureVoicesByLocale(): Voice[][] {
+      return groupVoicesByLocale(this.azureVoices);
     },
 
     currentVoice(state): Voice | undefined {
@@ -211,6 +231,40 @@ export const useVoicesStore = defineStore("voices", {
         });
       } finally {
         this.$patch({ loading: false });
+      }
+    },
+
+    /**
+     * Loads the voice list of an Azure resource.
+     *
+     * Credentials are passed in rather than read here so the caller decides
+     * when a paid request is worth making (for example on an explicit
+     * "verify" click instead of on every page load).
+     */
+    async fetchAzureVoices(credentials: AzureCredentials): Promise<boolean> {
+      if (this.azureLoading) {
+        return false;
+      }
+
+      if (!credentials.key || !credentials.region) {
+        this.$patch({
+          azureVoices: [],
+          azureError: "Azure key and region are required",
+        });
+        return false;
+      }
+
+      this.$patch({ azureLoading: true, azureError: null });
+
+      try {
+        const voices = await invoke<Voice[]>("get_azure_voices", { credentials });
+        this.$patch({ azureVoices: voices, azureError: null });
+        return true;
+      } catch (error) {
+        this.$patch({ azureVoices: [], azureError: toErrorMessage(error) });
+        return false;
+      } finally {
+        this.$patch({ azureLoading: false });
       }
     },
 

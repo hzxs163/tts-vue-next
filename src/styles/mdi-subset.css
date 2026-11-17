@@ -82,6 +82,10 @@
 
 .mdi-close-circle::before { content: "\F0159"; }
 
+.mdi-cloud-check-outline::before { content: "\F1BEC"; }
+
+.mdi-cloud-outline::before { content: "\F0163"; }
+
 .mdi-cloud-upload::before { content: "\F0167"; }
 
 .mdi-cog::before { content: "\F0493"; }
@@ -97,6 +101,10 @@
 .mdi-download::before { content: "\F01DA"; }
 
 .mdi-drama-masks::before { content: "\F0D02"; }
+
+.mdi-eye::before { content: "\F0208"; }
+
+.mdi-eye-off::before { content: "\F0209"; }
 
 .mdi-eye-outline::before { content: "\F06D0"; }
 

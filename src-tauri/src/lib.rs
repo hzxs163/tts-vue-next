@@ -1,6 +1,7 @@
 mod audio;
 mod commands;
 mod edge_tts;
+mod tts_provider;
 mod utils;
 
 use tauri::Manager;
@@ -28,6 +29,7 @@ pub fn run() {
             commands::tts::tts_stop,
             commands::service::check_tts_service,
             commands::voices::get_voices,
+            commands::voices::get_azure_voices,
             commands::file::read_text_file,
             commands::file::select_folder,
             commands::file::show_in_folder,

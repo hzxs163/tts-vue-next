@@ -1,15 +1,38 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { useI18n } from "vue-i18n";
 import { useMessage } from "vuetify-message-vue3";
 import type { ConflictStrategy, FileNamePattern } from "../types";
 import { useSettingsStore } from "../stores/settings";
+import { useVoicesStore } from "../stores/voices";
 import BgmConfigCard from "../components/common/BgmConfigCard.vue";
 
 const settingsStore = useSettingsStore();
+const voicesStore = useVoicesStore();
 const message = useMessage();
 const { t } = useI18n();
+
+/** The key is masked by default; revealing it is an explicit action. */
+const showAzureKey = ref(false);
+
+const azureConfigured = computed(
+  () => Boolean(settingsStore.azureKey) && Boolean(settingsStore.azureRegion),
+);
+
+async function verifyAzure() {
+  const ok = await voicesStore.fetchAzureVoices({
+    key: settingsStore.azureKey,
+    region: settingsStore.azureRegion,
+  });
+
+  if (ok) {
+    message.success(t("settings.azure.verified", { count: voicesStore.azureVoices.length }));
+    return;
+  }
+
+  message.error(t("settings.azure.verifyFailed", { message: voicesStore.azureError ?? "" }));
+}
 
 const formatOptions = computed(() => [
   { title: t("common.formats.mp3"), value: "mp3" },
@@ -183,6 +206,75 @@ async function selectSavePath() {
                     :label="$t('settings.fields.chunkConcurrency')"
                     @update:model-value="settingsStore.updateChunkConcurrency"
                   />
+                </div>
+              </section>
+
+              <section class="settings-group">
+                <div class="settings-group__header">
+                  <v-icon size="18" color="primary">mdi-cloud-outline</v-icon>
+                  <span class="text-subtitle-1 font-weight-medium">{{
+                    $t("settings.sections.azure")
+                  }}</span>
+                </div>
+
+                <div class="settings-toggles">
+                  <v-switch
+                    :model-value="settingsStore.azureEnabled"
+                    :label="$t('settings.azure.enabled')"
+                    density="comfortable"
+                    color="primary"
+                    hide-details
+                    @update:model-value="
+                      (value) => settingsStore.updateAzureEnabled(Boolean(value))
+                    "
+                  />
+                </div>
+
+                <div class="settings-fields">
+                  <v-text-field
+                    :model-value="settingsStore.azureRegion"
+                    :label="$t('settings.azure.region')"
+                    :placeholder="$t('settings.azure.regionPlaceholder')"
+                    density="comfortable"
+                    hide-details
+                    @update:model-value="settingsStore.updateAzureRegion"
+                  />
+
+                  <v-text-field
+                    :model-value="settingsStore.azureKey"
+                    :label="$t('settings.azure.key')"
+                    :type="showAzureKey ? 'text' : 'password'"
+                    :append-inner-icon="showAzureKey ? 'mdi-eye-off' : 'mdi-eye'"
+                    density="comfortable"
+                    hide-details
+                    autocomplete="off"
+                    @update:model-value="settingsStore.updateAzureKey"
+                    @click:append-inner="showAzureKey = !showAzureKey"
+                  />
+                </div>
+
+                <div class="d-flex flex-wrap align-center ga-2">
+                  <v-btn
+                    variant="outlined"
+                    size="small"
+                    prepend-icon="mdi-cloud-check-outline"
+                    :loading="voicesStore.azureLoading"
+                    :disabled="!azureConfigured"
+                    @click="verifyAzure"
+                  >
+                    {{ $t("settings.azure.verify") }}
+                  </v-btn>
+                  <span v-if="voicesStore.azureVoices.length > 0" class="text-caption text-success">
+                    {{
+                      $t("settings.azure.voiceCount", {
+                        count: voicesStore.azureVoices.length,
+                      })
+                    }}
+                  </span>
+                </div>
+
+                <div class="text-caption text-medium-emphasis">
+                  {{ $t("settings.azure.storageHint") }}
                 </div>
               </section>
             </div>

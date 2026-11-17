@@ -177,8 +177,9 @@ describe("Settings view", () => {
     expect(columns[0].classes()).toContain("settings-column--main");
     expect(columns[1].classes()).toContain("settings-column--side");
 
-    // Output and processing share the main column, BGM lives on its own.
-    expect(columns[0].findAll(".settings-group")).toHaveLength(2);
+    // Output, processing and the third-party service share the main column;
+    // BGM lives on its own.
+    expect(columns[0].findAll(".settings-group")).toHaveLength(3);
     expect(columns[1].findAll(".settings-group")).toHaveLength(1);
 
     // Every output field has to survive the reflow.

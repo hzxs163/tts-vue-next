@@ -12,6 +12,14 @@ export interface Voice {
   };
 }
 
+export type TtsProviderId = "edge" | "azure";
+
+/** Credentials of a paid Azure Speech resource. */
+export interface AzureCredentials {
+  key: string;
+  region: string;
+}
+
 export interface TtsParams {
   text: string;
   voice: string;
@@ -22,6 +30,10 @@ export interface TtsParams {
   task_id: string;
   max_retries: number;
   chunk_concurrency: number;
+  /** Defaults to the free Edge endpoint when omitted. */
+  provider?: TtsProviderId;
+  /** Required when `provider` is `azure`. */
+  azure?: AzureCredentials | null;
 }
 
 export interface BatchFile {
@@ -94,6 +106,8 @@ export interface DialogueRole {
   volume: number;
   color: string;
   isDefault?: boolean;
+  /** Which speech service synthesizes this role. Defaults to Edge. */
+  provider?: TtsProviderId;
 }
 
 export interface DialogueLine {
@@ -163,6 +177,18 @@ export interface TtsSettings {
   exportSubtitles: boolean;
   language: AppLanguage;
   themeMode: ThemeMode;
+  /**
+   * Azure Speech resource used by roles that opt into it.
+   *
+   * The key is kept in the settings file in plain text: this app must run on
+   * Windows, macOS and Linux, and the OS credential stores need extra native
+   * dependencies that are not always present. Reads and writes go through the
+   * settings store so the storage can be swapped later without touching
+   * callers.
+   */
+  azureKey: string;
+  azureRegion: string;
+  azureEnabled: boolean;
 }
 
 export interface TtsProgressEvent {

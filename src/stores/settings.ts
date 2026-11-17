@@ -38,9 +38,22 @@ export const useSettingsStore = defineStore("settings", {
     exportSubtitles: false,
     language: "zh-CN",
     themeMode: "system",
+    azureKey: "",
+    azureRegion: "",
+    azureEnabled: false,
   }),
 
   actions: {
+    updateAzureKey(key: string) {
+      this.$patch({ azureKey: key.trim() });
+    },
+    updateAzureRegion(region: string) {
+      this.$patch({ azureRegion: region.trim() });
+    },
+    updateAzureEnabled(enabled: boolean) {
+      this.$patch({ azureEnabled: enabled });
+    },
+
     updateSavePath(path: string) {
       this.$patch({ savePath: path });
     },
