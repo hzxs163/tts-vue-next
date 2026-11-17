@@ -124,6 +124,7 @@ export const useTtsStore = defineStore("tts", {
         task_id: taskId,
         max_retries: settingsStore.maxRetries,
         chunk_concurrency: settingsStore.chunkConcurrency,
+        ...voicesStore.requestProvider,
       };
 
       revokeAudioUrl(this.audioUrl);

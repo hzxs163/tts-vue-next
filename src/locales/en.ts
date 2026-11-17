@@ -1,6 +1,9 @@
 export default {
   common: {
     appName: "TTS Vue Next",
+    provider: "Speech provider",
+    providerEdge: "Edge (free voices)",
+    providerAzure: "Azure Speech",
     formats: {
       mp3: "MP3",
       wav: "WAV",
@@ -292,9 +295,6 @@ export default {
       editRole: "Configure Role",
       deleteRole: "Delete Role",
       roleName: "Role Name",
-      provider: "Speech provider",
-      providerEdge: "Edge (free voices)",
-      providerAzure: "Azure Speech",
       locale: "Language / Region",
       localeOption: "{locale} ({count} voices)",
       noVoiceInLocale: "No voices in this language",

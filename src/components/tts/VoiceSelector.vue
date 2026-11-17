@@ -1,9 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
+import { useI18n } from "vue-i18n";
 import { useVoicesStore } from "../../stores/voices";
+import { useSettingsStore } from "../../stores/settings";
+import type { TtsProviderId } from "../../types";
 
 const voicesStore = useVoicesStore();
+const settingsStore = useSettingsStore();
+const { t } = useI18n();
 const showFavoritesOnly = ref(false);
 const previewLoading = ref(false);
 const previewPlaying = ref(false);
@@ -38,6 +43,28 @@ const selectedVoice = computed({
       voicesStore.setVoice(value);
       stopPreview();
     }
+  },
+});
+
+/**
+ * Azure is only offered once it is fully configured, so the switch cannot lead
+ * to an unusable state.
+ */
+const providerItems = computed(() => {
+  const items: Array<{ title: string; value: TtsProviderId }> = [
+    { title: t("common.providerEdge"), value: "edge" },
+  ];
+  if (settingsStore.azureEnabled && settingsStore.azureKey && settingsStore.azureRegion) {
+    items.push({ title: t("common.providerAzure"), value: "azure" });
+  }
+  return items;
+});
+
+const selectedProvider = computed({
+  get: () => voicesStore.selectedProvider,
+  set: (value: TtsProviderId) => {
+    stopPreview();
+    void voicesStore.setProvider(value);
   },
 });
 
@@ -122,6 +149,7 @@ async function togglePreview() {
         task_id: taskId,
         max_retries: 1,
         chunk_concurrency: 1,
+        ...voicesStore.requestProvider,
       },
     });
 
@@ -147,6 +175,17 @@ async function togglePreview() {
 
 <template>
   <div class="voice-selector">
+    <v-select
+      v-if="providerItems.length > 1"
+      v-model="selectedProvider"
+      :items="providerItems"
+      :label="$t('common.provider')"
+      prepend-inner-icon="mdi-cloud-outline"
+      class="mb-3"
+      density="comfortable"
+      :loading="voicesStore.azureLoading"
+    />
+
     <v-select
       v-model="selectedLocale"
       :items="localeItems"

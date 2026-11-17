@@ -68,6 +68,20 @@ function createMemoryStorage(): StorageLike & { clear(): void } {
   };
 }
 
+const azureVoice: Voice = {
+  Name: "Microsoft Server Speech Text to Speech Voice (zh-CN, XiaochenNeural)",
+  ShortName: "zh-CN-XiaochenNeural",
+  Gender: "Female",
+  Locale: "zh-CN",
+  SuggestedCodec: "audio-24khz-48kbitrate-mono-mp3",
+  FriendlyName: "Xiaochen",
+  Status: "GA",
+  VoiceTag: {
+    ContentCategories: ["General"],
+    VoicePersonalities: ["Warm"],
+  },
+};
+
 describe("useVoicesStore", () => {
   const storage = createMemoryStorage();
 
@@ -257,5 +271,62 @@ describe("useVoicesStore", () => {
     store.toggleFavorite("zh-CN-YunxiNeural");
     expect(store.isFavorite("zh-CN-YunxiNeural")).toBe(false);
     expect(store.favorites).toEqual([]);
+  });
+
+  describe("provider routing", () => {
+    async function setupWithAzure() {
+      const { useVoicesStore } = await import("./voices");
+      const { useSettingsStore } = await import("./settings");
+      const store = useVoicesStore();
+
+      invokeMock.mockResolvedValue(voicesFixture);
+      await store.fetchVoices();
+      store.$patch({ azureVoices: [azureVoice] });
+
+      return { store, settings: useSettingsStore() };
+    }
+
+    test("defaults to the free Edge endpoint", async () => {
+      const { store } = await setupWithAzure();
+      expect(store.selectedProvider).toBe("edge");
+      expect(store.requestProvider).toEqual({ provider: "edge", azure: null });
+    });
+
+    test("routes to Azure once it is selected and configured", async () => {
+      const { store, settings } = await setupWithAzure();
+      settings.$patch({
+        azureEnabled: true,
+        azureKey: "secret-key",
+        azureRegion: "eastasia",
+      });
+
+      store.$patch({ selectedProvider: "azure" });
+
+      expect(store.requestProvider).toEqual({
+        provider: "azure",
+        azure: { key: "secret-key", region: "eastasia" },
+      });
+    });
+
+    test("falls back to Edge when Azure is selected but not configured", async () => {
+      const { store, settings } = await setupWithAzure();
+      // A half filled settings form must not make every conversion fail.
+      settings.$patch({ azureEnabled: true, azureKey: "", azureRegion: "eastasia" });
+
+      store.$patch({ selectedProvider: "azure" });
+
+      expect(store.requestProvider).toEqual({ provider: "edge", azure: null });
+    });
+
+    test("lists locales and voices of the active provider only", async () => {
+      const { store } = await setupWithAzure();
+
+      expect(store.locales).toEqual(["en-US", "zh-CN"]);
+
+      store.$patch({ selectedProvider: "azure", selectedLocale: azureVoice.Locale });
+
+      expect(store.locales).toEqual([azureVoice.Locale]);
+      expect(store.filteredVoices.map((voice) => voice.ShortName)).toEqual([azureVoice.ShortName]);
+    });
   });
 });

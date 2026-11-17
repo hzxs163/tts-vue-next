@@ -40,6 +40,7 @@ interface BatchExecutionSnapshot {
   conflictStrategy: ConflictStrategy;
   exportSubtitles: boolean;
   selectedVoice: string;
+  requestProvider: Pick<TtsParams, "provider" | "azure">;
 }
 
 function toFileName(path: string): string {
@@ -249,6 +250,9 @@ export const useBatchStore = defineStore("batch", {
         conflictStrategy: settingsStore.conflictStrategy,
         exportSubtitles: settingsStore.exportSubtitles,
         selectedVoice: voicesStore.selectedVoice,
+        // Snapshotted with the rest of the settings: a batch started on Azure
+        // must not switch providers halfway if the user changes the selection.
+        requestProvider: voicesStore.requestProvider,
       };
       const workerCount = Math.min(snapshot.fileConcurrency, fileIds.length);
       let nextIndex = 0;
@@ -272,6 +276,7 @@ export const useBatchStore = defineStore("batch", {
           task_id: file.id,
           max_retries: snapshot.maxRetries,
           chunk_concurrency: snapshot.chunkConcurrency,
+          ...snapshot.requestProvider,
         };
         this.$patch((state) => {
           state.files = updateFile(state.files, file.id, {

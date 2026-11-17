@@ -133,6 +133,9 @@ describe("useTtsStore", () => {
         task_id: "task-123",
         max_retries: 7,
         chunk_concurrency: 3,
+        // The voice selection defaults to the free Edge endpoint.
+        provider: "edge",
+        azure: null,
       },
     });
     expect(Array.from(store.audioBytes ?? [])).toEqual([1, 2, 3]);

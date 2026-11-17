@@ -1,6 +1,7 @@
 import { defineStore } from "pinia";
 import { invoke } from "@tauri-apps/api/core";
-import type { AzureCredentials, Voice } from "../types";
+import { useSettingsStore } from "./settings";
+import type { AzureCredentials, TtsProviderId, Voice } from "../types";
 
 const VOICE_CACHE_KEY = "tts_voices_cache_v1";
 
@@ -15,6 +16,8 @@ interface VoicesState {
   error: string | null;
   usingCache: boolean;
   cacheSavedAt: number | null;
+  /** Which catalog the selection below refers to. */
+  selectedProvider: TtsProviderId;
   selectedLocale: string;
   selectedVoice: string;
   favorites: string[];
@@ -137,6 +140,7 @@ export const useVoicesStore = defineStore("voices", {
     error: null,
     usingCache: false,
     cacheSavedAt: null,
+    selectedProvider: "edge",
     selectedLocale: "zh-CN",
     selectedVoice: "zh-CN-XiaoxiaoNeural",
     favorites: [],
@@ -146,12 +150,24 @@ export const useVoicesStore = defineStore("voices", {
   }),
 
   getters: {
+    /**
+     * Catalog the current selection applies to.
+     *
+     * The whole app treats "the selected voice" as a (provider, locale, voice)
+     * triple, so switching the provider also switches the catalog behind it.
+     */
+    activeVoices(state): Voice[] {
+      return state.selectedProvider === "azure" ? state.azureVoices : state.voices;
+    },
+
     locales(state): string[] {
-      return Array.from(new Set(state.voices.map((voice) => voice.Locale))).sort();
+      const active = state.selectedProvider === "azure" ? state.azureVoices : state.voices;
+      return Array.from(new Set(active.map((voice) => voice.Locale))).sort();
     },
 
     filteredVoices(state): Voice[] {
-      const list = state.voices.filter((voice) => voice.Locale === state.selectedLocale);
+      const active = state.selectedProvider === "azure" ? state.azureVoices : state.voices;
+      const list = active.filter((voice) => voice.Locale === state.selectedLocale);
       return [...list].sort((a, b) => {
         const aFav = state.favorites.includes(a.ShortName) ? 1 : 0;
         const bFav = state.favorites.includes(b.ShortName) ? 1 : 0;
@@ -181,6 +197,29 @@ export const useVoicesStore = defineStore("voices", {
     /** The Azure catalog grouped the same way as the Edge one. */
     azureVoicesByLocale(): Voice[][] {
       return groupVoicesByLocale(this.azureVoices);
+    },
+
+    /**
+     * Request routing for the current selection.
+     *
+     * Falls back to the free Edge endpoint whenever Azure is selected but not
+     * fully configured, so a half-filled settings form cannot make every
+     * conversion fail.
+     */
+    requestProvider(): { provider: TtsProviderId; azure: AzureCredentials | null } {
+      if (this.selectedProvider !== "azure") {
+        return { provider: "edge", azure: null };
+      }
+
+      const settings = useSettingsStore();
+      if (!settings.azureEnabled || !settings.azureKey || !settings.azureRegion) {
+        return { provider: "edge", azure: null };
+      }
+
+      return {
+        provider: "azure",
+        azure: { key: settings.azureKey, region: settings.azureRegion },
+      };
     },
 
     currentVoice(state): Voice | undefined {
@@ -268,6 +307,35 @@ export const useVoicesStore = defineStore("voices", {
       }
     },
 
+    /**
+     * Switches the active catalog.
+     *
+     * Fetching the Azure list on demand keeps the paid request off the startup
+     * path while still making the switch feel immediate.
+     */
+    async setProvider(provider: TtsProviderId) {
+      if (provider === this.selectedProvider) {
+        return;
+      }
+
+      this.$patch({ selectedProvider: provider });
+
+      if (provider === "azure" && this.azureVoices.length === 0) {
+        const settings = useSettingsStore();
+        await this.fetchAzureVoices({
+          key: settings.azureKey,
+          region: settings.azureRegion,
+        });
+      }
+
+      const selection = resolveSelection(
+        this.activeVoices,
+        this.selectedLocale,
+        this.selectedVoice,
+      );
+      this.$patch(selection);
+    },
+
     setLocale(locale: string) {
       const firstVoiceForLocale = this.voices.find((voice) => voice.Locale === locale);
       if (!firstVoiceForLocale) {
@@ -303,6 +371,6 @@ export const useVoicesStore = defineStore("voices", {
   },
 
   persist: {
-    pick: ["selectedLocale", "selectedVoice", "favorites"],
+    pick: ["selectedProvider", "selectedLocale", "selectedVoice", "favorites"],
   },
 });

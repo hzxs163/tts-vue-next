@@ -1,6 +1,9 @@
 export default {
   common: {
     appName: "TTS Vue Next",
+    provider: "语音服务商",
+    providerEdge: "Edge 免费音色",
+    providerAzure: "Azure 语音服务",
     formats: {
       mp3: "MP3",
       wav: "WAV",
@@ -285,9 +288,6 @@ export default {
       editRole: "配置角色",
       deleteRole: "删除角色",
       roleName: "角色姓名",
-      provider: "语音服务商",
-      providerEdge: "Edge 免费音色",
-      providerAzure: "Azure 语音服务",
       locale: "语言 / 地区",
       localeOption: "{locale}（{count} 个音色）",
       noVoiceInLocale: "该语言下暂无音色",

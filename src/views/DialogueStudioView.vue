@@ -103,11 +103,11 @@ const azureAvailable = computed(
 
 const providerOptions = computed(() => {
   const options: Array<{ title: string; value: TtsProviderId; subtitle?: string }> = [
-    { title: t("dialogue.cast.providerEdge"), value: "edge" },
+    { title: t("common.providerEdge"), value: "edge" },
   ];
   if (azureAvailable.value) {
     options.push({
-      title: t("dialogue.cast.providerAzure"),
+      title: t("common.providerAzure"),
       value: "azure",
     });
   }
@@ -1126,7 +1126,7 @@ async function exportSubtitlesFile(format: "srt" | "vtt" = "srt") {
             v-if="providerOptions.length > 1"
             v-model="roleFormProvider"
             :items="providerOptions"
-            :label="$t('dialogue.cast.provider')"
+            :label="$t('common.provider')"
             variant="outlined"
             density="compact"
             class="mb-3"
