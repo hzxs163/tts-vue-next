@@ -203,7 +203,8 @@ const voiceOptions = computed(() => {
 function localeOfVoice(shortName: string): string {
   const fromCatalog =
     voicesStore.voices.find((voice) => voice.ShortName === shortName)?.Locale ??
-    voicesStore.azureVoices.find((voice) => voice.ShortName === shortName)?.Locale;
+    voicesStore.azureVoices.find((voice) => voice.ShortName === shortName)?.Locale ??
+    voicesStore.openaiVoices.find((voice) => voice.ShortName === shortName)?.Locale;
   if (fromCatalog) {
     return fromCatalog;
   }
@@ -245,7 +246,12 @@ function handleProviderChange() {
 
 /** Locale shown on a role card, independent of catalog load timing. */
 function roleLocale(role: DialogueRole): string {
-  return role.locale || localeOfVoice(role.voice) || "—";
+  const locale = role.locale || localeOfVoice(role.voice);
+  if (!locale) {
+    return "—";
+  }
+  // The OpenAI catalog has no real locales; it uses a placeholder group.
+  return locale === OPENAI_LOCALE ? t("common.customLocale") : locale;
 }
 
 /**
@@ -253,7 +259,7 @@ function roleLocale(role: DialogueRole): string {
  * opening the cast on a fresh launch left every picker empty.
  */
 onMounted(() => {
-  void voicesStore.fetchVoices();
+  void voicesStore.ensureActiveCatalog();
 });
 
 const totalChars = computed(() =>

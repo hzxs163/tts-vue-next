@@ -16,7 +16,7 @@ let previewAudio: HTMLAudioElement | null = null;
 let previewUrl: string | null = null;
 
 onMounted(() => {
-  void voicesStore.fetchVoices();
+  void voicesStore.ensureActiveCatalog();
 });
 
 onUnmounted(() => {

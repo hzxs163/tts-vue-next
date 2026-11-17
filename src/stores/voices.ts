@@ -186,12 +186,29 @@ export const useVoicesStore = defineStore("voices", {
      * triple, so switching the provider also switches the catalog behind it.
      */
     activeVoices(state): Voice[] {
-      if (state.selectedProvider === "azure") {
+      // Mirrors `requestProvider`: a provider that is selected but not fully
+      // configured falls back to Edge, so the catalog must fall back with it.
+      // Otherwise the picker would list nothing while the request still used
+      // the Edge voices.
+      const settings = useSettingsStore();
+
+      if (
+        state.selectedProvider === "azure" &&
+        settings.azureEnabled &&
+        settings.azureKey &&
+        settings.azureRegion
+      ) {
         return state.azureVoices;
       }
-      if (state.selectedProvider === "openai") {
+
+      if (
+        state.selectedProvider === "openai" &&
+        settings.openaiKey.trim() &&
+        settings.openaiBaseUrl.trim()
+      ) {
         return this.openaiVoices;
       }
+
       return state.voices;
     },
 
@@ -281,8 +298,8 @@ export const useVoicesStore = defineStore("voices", {
       return buildOpenAiVoices(useSettingsStore().openaiVoices);
     },
 
-    currentVoice(state): Voice | undefined {
-      return state.voices.find((voice) => voice.ShortName === state.selectedVoice);
+    currentVoice(): Voice | undefined {
+      return this.activeVoices.find((voice) => voice.ShortName === this.selectedVoice);
     },
   },
 
@@ -357,6 +374,9 @@ export const useVoicesStore = defineStore("voices", {
       try {
         const voices = await invoke<Voice[]>("get_azure_voices", { credentials });
         this.$patch({ azureVoices: voices, azureError: null });
+        // The persisted selection may predate this catalog; resolve it so the
+        // picker and the preview agree on a voice that actually exists.
+        this.$patch(resolveSelection(this.activeVoices, this.selectedLocale, this.selectedVoice));
         return true;
       } catch (error) {
         this.$patch({ azureVoices: [], azureError: toErrorMessage(error) });
@@ -364,6 +384,30 @@ export const useVoicesStore = defineStore("voices", {
       } finally {
         this.$patch({ azureLoading: false });
       }
+    },
+
+    /**
+     * Loads the catalog the persisted provider needs.
+     *
+     * Only the Edge list used to be fetched on start-up, so a session that
+     * ended on Azure (or OpenAI) reopened with an empty, unselectable list.
+     */
+    async ensureActiveCatalog(): Promise<void> {
+      const settings = useSettingsStore();
+      const azureUsable =
+        settings.azureEnabled && Boolean(settings.azureKey) && Boolean(settings.azureRegion);
+
+      if (this.selectedProvider === "azure" && azureUsable) {
+        if (this.azureVoices.length === 0) {
+          await this.fetchAzureVoices({
+            key: settings.azureKey,
+            region: settings.azureRegion,
+          });
+        }
+        return;
+      }
+
+      await this.fetchVoices();
     },
 
     /**
@@ -396,7 +440,7 @@ export const useVoicesStore = defineStore("voices", {
     },
 
     setLocale(locale: string) {
-      const firstVoiceForLocale = this.voices.find((voice) => voice.Locale === locale);
+      const firstVoiceForLocale = this.activeVoices.find((voice) => voice.Locale === locale);
       if (!firstVoiceForLocale) {
         return;
       }
@@ -408,7 +452,9 @@ export const useVoicesStore = defineStore("voices", {
     },
 
     setVoice(shortName: string) {
-      const voice = this.voices.find((item) => item.ShortName === shortName);
+      // Must look in the *active* catalog: an Azure voice is not part of the
+      // Edge list, and looking there made the selection silently ignored.
+      const voice = this.activeVoices.find((item) => item.ShortName === shortName);
       if (!voice) {
         return;
       }

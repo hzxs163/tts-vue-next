@@ -278,12 +278,20 @@ describe("useVoicesStore", () => {
       const { useVoicesStore } = await import("./voices");
       const { useSettingsStore } = await import("./settings");
       const store = useVoicesStore();
+      const settings = useSettingsStore();
 
       invokeMock.mockResolvedValue(voicesFixture);
       await store.fetchVoices();
       store.$patch({ azureVoices: [azureVoice] });
+      // Azure is only selectable once it is configured, and the catalog only
+      // backs the request in that state.
+      settings.$patch({
+        azureEnabled: true,
+        azureKey: "secret-key",
+        azureRegion: "eastasia",
+      });
 
-      return { store, settings: useSettingsStore() };
+      return { store, settings };
     }
 
     test("defaults to the free Edge endpoint", async () => {
@@ -357,6 +365,75 @@ describe("useVoicesStore", () => {
       expect(names).toEqual(["alloy", "nova", "onyx"]);
       // A single placeholder locale keeps the grouped pickers working.
       expect(new Set(store.openaiVoices.map((voice) => voice.Locale)).size).toBe(1);
+    });
+
+    test("loads the catalog of the persisted provider on restart", async () => {
+      const { useVoicesStore } = await import("./voices");
+      const { useSettingsStore } = await import("./settings");
+      const store = useVoicesStore();
+      const settings = useSettingsStore();
+
+      settings.$patch({
+        azureEnabled: true,
+        azureKey: "secret-key",
+        azureRegion: "eastasia",
+      });
+      // A session that ended on Azure reopens with that provider persisted.
+      store.$patch({ selectedProvider: "azure", azureVoices: [] });
+
+      invokeMock.mockResolvedValue([azureVoice]);
+      await store.ensureActiveCatalog();
+
+      expect(invokeMock).toHaveBeenCalledWith("get_azure_voices", expect.anything());
+      expect(store.azureVoices).toHaveLength(1);
+      // The stale persisted voice must be replaced by one that exists.
+      expect(store.selectedVoice).toBe(azureVoice.ShortName);
+    });
+
+    test("falls back to the Edge catalog when Azure is not configured", async () => {
+      const { useVoicesStore } = await import("./voices");
+      const store = useVoicesStore();
+      store.$patch({ selectedProvider: "azure", azureVoices: [] });
+
+      invokeMock.mockResolvedValue(voicesFixture);
+      await store.ensureActiveCatalog();
+
+      expect(invokeMock).toHaveBeenCalledWith("get_voices");
+      expect(store.voices).toHaveLength(voicesFixture.length);
+    });
+
+    test("selecting a voice from the active catalog updates the selection", async () => {
+      const { store } = await setupWithAzure();
+      store.$patch({ selectedProvider: "azure", selectedLocale: "zh-CN" });
+
+      // Regression: the setter used to search only the Edge catalog, so an
+      // Azure voice was silently ignored and the preview kept reading the old
+      // voice out of that selection.
+      store.setVoice(azureVoice.ShortName);
+
+      expect(store.selectedVoice).toBe(azureVoice.ShortName);
+      expect(store.currentVoice?.ShortName).toBe(azureVoice.ShortName);
+    });
+
+    test("selecting a locale only present in the active catalog works", async () => {
+      const { store } = await setupWithAzure();
+      const englishAzure: Voice = { ...azureVoice, ShortName: "en-US-AvaNeural", Locale: "en-US" };
+      store.$patch({ azureVoices: [azureVoice, englishAzure], selectedProvider: "azure" });
+
+      store.setLocale("en-US");
+
+      expect(store.selectedLocale).toBe("en-US");
+      expect(store.selectedVoice).toBe("en-US-AvaNeural");
+    });
+
+    test("ignores a voice that is not in the active catalog", async () => {
+      const { store } = await setupWithAzure();
+      store.$patch({ selectedProvider: "azure", selectedVoice: azureVoice.ShortName });
+
+      // An Edge-only voice must not become selectable while Azure is active.
+      store.setVoice("zh-CN-XiaoxiaoNeural");
+
+      expect(store.selectedVoice).toBe(azureVoice.ShortName);
     });
 
     test("lists locales and voices of the active provider only", async () => {
