@@ -136,6 +136,7 @@ describe("useTtsStore", () => {
         // The voice selection defaults to the free Edge endpoint.
         provider: "edge",
         azure: null,
+        openai: null,
       },
     });
     expect(Array.from(store.audioBytes ?? [])).toEqual([1, 2, 3]);

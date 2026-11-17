@@ -2,6 +2,8 @@ export default {
   common: {
     appName: "TTS Vue Next",
     provider: "语音服务商",
+    providerOpenai: "OpenAI 兼容接口",
+    customLocale: "自定义音色",
     providerEdge: "Edge 免费音色",
     providerAzure: "Azure 语音服务",
     formats: {
@@ -232,10 +234,24 @@ export default {
       storageHint: "密钥保存在本机设置文件中（明文）。它不会写入日志，界面默认掩码显示。",
     },
 
+    openai: {
+      baseUrl: "接入地址",
+      baseUrlPlaceholder: "例如 https://api.openai.com/v1",
+      key: "API 密钥",
+      model: "模型",
+      modelPlaceholder: "例如 tts-1",
+      voices: "可用音色",
+      voicesPlaceholder: "alloy, echo, fable, onyx, nova, shimmer",
+      voicesHint: "用英文逗号分隔。该协议没有音色列表接口，需要手动维护。",
+      storageHint:
+        "密钥保存在本机设置文件中（明文），不会写入日志。该协议仅支持语速调节，语调与音量参数对其无效。",
+    },
+
     sections: {
       output: "输出",
       processing: "处理",
       azure: "第三方语音服务",
+      openai: "OpenAI 兼容语音接口",
       about: "关于",
     },
     fields: {

@@ -2,6 +2,8 @@ export default {
   common: {
     appName: "TTS Vue Next",
     provider: "Speech provider",
+    providerOpenai: "OpenAI compatible",
+    customLocale: "Custom voices",
     providerEdge: "Edge (free voices)",
     providerAzure: "Azure Speech",
     formats: {
@@ -239,10 +241,25 @@ export default {
         "The key is stored in the local settings file in plain text. It is never written to logs and is masked in the UI by default.",
     },
 
+    openai: {
+      baseUrl: "Endpoint",
+      baseUrlPlaceholder: "e.g. https://api.openai.com/v1",
+      key: "API key",
+      model: "Model",
+      modelPlaceholder: "e.g. tts-1",
+      voices: "Available voices",
+      voicesPlaceholder: "alloy, echo, fable, onyx, nova, shimmer",
+      voicesHint:
+        "Comma separated. The protocol has no endpoint that lists voices, so they are maintained here.",
+      storageHint:
+        "The key is stored in the local settings file in plain text and never logged. This protocol only supports speed, so pitch and volume have no effect.",
+    },
+
     sections: {
       output: "Output",
       processing: "Processing",
       azure: "Third-party speech service",
+      openai: "OpenAI compatible speech",
       about: "About",
     },
     fields: {

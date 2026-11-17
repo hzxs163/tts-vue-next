@@ -192,6 +192,8 @@
 
 .mdi-regex::before { content: "\F0451"; }
 
+.mdi-robot-outline::before { content: "\F167A"; }
+
 .mdi-script-text-outline::before { content: "\F0BC3"; }
 
 .mdi-star::before { content: "\F04CE"; }

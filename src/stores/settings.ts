@@ -41,6 +41,10 @@ export const useSettingsStore = defineStore("settings", {
     azureKey: "",
     azureRegion: "",
     azureEnabled: false,
+    openaiKey: "",
+    openaiBaseUrl: "",
+    openaiModel: "tts-1",
+    openaiVoices: "alloy, echo, fable, onyx, nova, shimmer",
   }),
 
   actions: {
@@ -52,6 +56,18 @@ export const useSettingsStore = defineStore("settings", {
     },
     updateAzureEnabled(enabled: boolean) {
       this.$patch({ azureEnabled: enabled });
+    },
+    updateOpenAiKey(key: string) {
+      this.$patch({ openaiKey: key.trim() });
+    },
+    updateOpenAiBaseUrl(baseUrl: string) {
+      this.$patch({ openaiBaseUrl: baseUrl.trim() });
+    },
+    updateOpenAiModel(model: string) {
+      this.$patch({ openaiModel: model.trim() });
+    },
+    updateOpenAiVoices(voices: string) {
+      this.$patch({ openaiVoices: voices });
     },
 
     updateSavePath(path: string) {

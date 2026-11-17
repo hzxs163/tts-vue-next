@@ -87,6 +87,7 @@ export const MDI_SUBSET_ICONS = [
   "mdi-radiobox-marked",
   "mdi-refresh",
   "mdi-regex",
+  "mdi-robot-outline",
   "mdi-script-text-outline",
   "mdi-star",
   "mdi-star-half-full",

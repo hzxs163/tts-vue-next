@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { useI18n } from "vue-i18n";
-import { useVoicesStore } from "../../stores/voices";
+import { OPENAI_LOCALE, useVoicesStore } from "../../stores/voices";
 import { useSettingsStore } from "../../stores/settings";
 import type { TtsProviderId } from "../../types";
 
@@ -57,6 +57,9 @@ const providerItems = computed(() => {
   if (settingsStore.azureEnabled && settingsStore.azureKey && settingsStore.azureRegion) {
     items.push({ title: t("common.providerAzure"), value: "azure" });
   }
+  if (settingsStore.openaiKey.trim() && settingsStore.openaiBaseUrl.trim()) {
+    items.push({ title: t("common.providerOpenai"), value: "openai" });
+  }
   return items;
 });
 
@@ -69,7 +72,11 @@ const selectedProvider = computed({
 });
 
 const localeItems = computed(() =>
-  voicesStore.locales.map((locale) => ({ title: locale, value: locale })),
+  voicesStore.locales.map((locale) => ({
+    // The OpenAI catalog has no locales; it uses a placeholder group.
+    title: locale === OPENAI_LOCALE ? t("common.customLocale") : locale,
+    value: locale,
+  })),
 );
 
 const voiceItems = computed(() => {

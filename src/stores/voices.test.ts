@@ -289,7 +289,7 @@ describe("useVoicesStore", () => {
     test("defaults to the free Edge endpoint", async () => {
       const { store } = await setupWithAzure();
       expect(store.selectedProvider).toBe("edge");
-      expect(store.requestProvider).toEqual({ provider: "edge", azure: null });
+      expect(store.requestProvider).toEqual({ provider: "edge", azure: null, openai: null });
     });
 
     test("routes to Azure once it is selected and configured", async () => {
@@ -305,6 +305,7 @@ describe("useVoicesStore", () => {
       expect(store.requestProvider).toEqual({
         provider: "azure",
         azure: { key: "secret-key", region: "eastasia" },
+        openai: null,
       });
     });
 
@@ -315,7 +316,47 @@ describe("useVoicesStore", () => {
 
       store.$patch({ selectedProvider: "azure" });
 
-      expect(store.requestProvider).toEqual({ provider: "edge", azure: null });
+      expect(store.requestProvider).toEqual({ provider: "edge", azure: null, openai: null });
+    });
+
+    test("routes to the OpenAI compatible endpoint once it is configured", async () => {
+      const { store, settings } = await setupWithAzure();
+      settings.$patch({
+        openaiKey: "sk-test",
+        openaiBaseUrl: "https://api.openai.com/v1",
+        openaiModel: "tts-1",
+      });
+
+      store.$patch({ selectedProvider: "openai" });
+
+      expect(store.requestProvider).toEqual({
+        provider: "openai",
+        azure: null,
+        openai: {
+          key: "sk-test",
+          baseUrl: "https://api.openai.com/v1",
+          model: "tts-1",
+        },
+      });
+    });
+
+    test("falls back to Edge when the OpenAI endpoint is not configured", async () => {
+      const { store, settings } = await setupWithAzure();
+      settings.$patch({ openaiKey: "sk-test", openaiBaseUrl: "   " });
+
+      store.$patch({ selectedProvider: "openai" });
+
+      expect(store.requestProvider).toEqual({ provider: "edge", azure: null, openai: null });
+    });
+
+    test("builds the OpenAI catalog from the configured voice list", async () => {
+      const { store, settings } = await setupWithAzure();
+      settings.$patch({ openaiVoices: " alloy , nova ,, onyx " });
+
+      const names = store.openaiVoices.map((voice) => voice.ShortName);
+      expect(names).toEqual(["alloy", "nova", "onyx"]);
+      // A single placeholder locale keeps the grouped pickers working.
+      expect(new Set(store.openaiVoices.map((voice) => voice.Locale)).size).toBe(1);
     });
 
     test("lists locales and voices of the active provider only", async () => {

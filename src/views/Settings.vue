@@ -15,6 +15,7 @@ const { t } = useI18n();
 
 /** The key is masked by default; revealing it is an explicit action. */
 const showAzureKey = ref(false);
+const showOpenAiKey = ref(false);
 
 const azureConfigured = computed(
   () => Boolean(settingsStore.azureKey) && Boolean(settingsStore.azureRegion),
@@ -277,6 +278,62 @@ async function selectSavePath() {
                   {{ $t("settings.azure.storageHint") }}
                 </div>
               </section>
+
+              <section class="settings-group">
+                <div class="settings-group__header">
+                  <v-icon size="18" color="primary">mdi-robot-outline</v-icon>
+                  <span class="text-subtitle-1 font-weight-medium">{{
+                    $t("settings.sections.openai")
+                  }}</span>
+                </div>
+
+                <div class="settings-fields">
+                  <v-text-field
+                    :model-value="settingsStore.openaiBaseUrl"
+                    :label="$t('settings.openai.baseUrl')"
+                    :placeholder="$t('settings.openai.baseUrlPlaceholder')"
+                    density="comfortable"
+                    hide-details
+                    @update:model-value="settingsStore.updateOpenAiBaseUrl"
+                  />
+
+                  <v-text-field
+                    :model-value="settingsStore.openaiKey"
+                    :label="$t('settings.openai.key')"
+                    :type="showOpenAiKey ? 'text' : 'password'"
+                    :append-inner-icon="showOpenAiKey ? 'mdi-eye-off' : 'mdi-eye'"
+                    density="comfortable"
+                    hide-details
+                    autocomplete="off"
+                    @update:model-value="settingsStore.updateOpenAiKey"
+                    @click:append-inner="showOpenAiKey = !showOpenAiKey"
+                  />
+
+                  <v-text-field
+                    :model-value="settingsStore.openaiModel"
+                    :label="$t('settings.openai.model')"
+                    :placeholder="$t('settings.openai.modelPlaceholder')"
+                    density="comfortable"
+                    hide-details
+                    @update:model-value="settingsStore.updateOpenAiModel"
+                  />
+
+                  <v-text-field
+                    class="settings-field--wide"
+                    :model-value="settingsStore.openaiVoices"
+                    :label="$t('settings.openai.voices')"
+                    :placeholder="$t('settings.openai.voicesPlaceholder')"
+                    :hint="$t('settings.openai.voicesHint')"
+                    persistent-hint
+                    density="comfortable"
+                    @update:model-value="settingsStore.updateOpenAiVoices"
+                  />
+                </div>
+
+                <div class="text-caption text-medium-emphasis">
+                  {{ $t("settings.openai.storageHint") }}
+                </div>
+              </section>
             </div>
 
             <div class="settings-column settings-column--side">
@@ -379,6 +436,11 @@ async function selectSavePath() {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px 12px;
+}
+
+/* A field carrying a long value and a hint reads better across both columns. */
+.settings-field--wide {
+  grid-column: 1 / -1;
 }
 
 /*

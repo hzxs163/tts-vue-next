@@ -1,7 +1,7 @@
 import { defineStore } from "pinia";
 import { invoke } from "@tauri-apps/api/core";
 import { useSettingsStore } from "./settings";
-import type { AzureCredentials, TtsProviderId, Voice } from "../types";
+import type { AzureCredentials, OpenAiCredentials, TtsProviderId, Voice } from "../types";
 
 const VOICE_CACHE_KEY = "tts_voices_cache_v1";
 
@@ -69,6 +69,35 @@ function writeVoiceCache(voices: Voice[]): void {
  * Groups a voice list by locale. Shared by the Edge and Azure catalogs so both
  * behave the same in the cast picker.
  */
+/**
+ * Placeholder locale for voices that do not belong to one, such as the OpenAI
+ * compatible catalog. Every picker groups by locale, so they need a value.
+ */
+export const OPENAI_LOCALE = "custom";
+
+/**
+ * Builds the OpenAI compatible catalog from the configured voice ids.
+ *
+ * The protocol has no endpoint that lists voices, so the list is maintained in
+ * the settings instead.
+ */
+function buildOpenAiVoices(configured: string): Voice[] {
+  return configured
+    .split(",")
+    .map((name) => name.trim())
+    .filter(Boolean)
+    .map((name) => ({
+      Name: name,
+      ShortName: name,
+      Gender: "",
+      Locale: OPENAI_LOCALE,
+      SuggestedCodec: "",
+      FriendlyName: name,
+      Status: "GA",
+      VoiceTag: { ContentCategories: [], VoicePersonalities: [] },
+    }));
+}
+
 function groupVoicesByLocale(voices: Voice[]): Voice[][] {
   const groups = new Map<string, Voice[]>();
 
@@ -157,17 +186,21 @@ export const useVoicesStore = defineStore("voices", {
      * triple, so switching the provider also switches the catalog behind it.
      */
     activeVoices(state): Voice[] {
-      return state.selectedProvider === "azure" ? state.azureVoices : state.voices;
+      if (state.selectedProvider === "azure") {
+        return state.azureVoices;
+      }
+      if (state.selectedProvider === "openai") {
+        return this.openaiVoices;
+      }
+      return state.voices;
     },
 
-    locales(state): string[] {
-      const active = state.selectedProvider === "azure" ? state.azureVoices : state.voices;
-      return Array.from(new Set(active.map((voice) => voice.Locale))).sort();
+    locales(): string[] {
+      return Array.from(new Set(this.activeVoices.map((voice) => voice.Locale))).sort();
     },
 
     filteredVoices(state): Voice[] {
-      const active = state.selectedProvider === "azure" ? state.azureVoices : state.voices;
-      const list = active.filter((voice) => voice.Locale === state.selectedLocale);
+      const list = this.activeVoices.filter((voice) => voice.Locale === state.selectedLocale);
       return [...list].sort((a, b) => {
         const aFav = state.favorites.includes(a.ShortName) ? 1 : 0;
         const bFav = state.favorites.includes(b.ShortName) ? 1 : 0;
@@ -206,20 +239,46 @@ export const useVoicesStore = defineStore("voices", {
      * fully configured, so a half-filled settings form cannot make every
      * conversion fail.
      */
-    requestProvider(): { provider: TtsProviderId; azure: AzureCredentials | null } {
-      if (this.selectedProvider !== "azure") {
-        return { provider: "edge", azure: null };
-      }
-
+    requestProvider(): {
+      provider: TtsProviderId;
+      azure: AzureCredentials | null;
+      openai: OpenAiCredentials | null;
+    } {
       const settings = useSettingsStore();
-      if (!settings.azureEnabled || !settings.azureKey || !settings.azureRegion) {
-        return { provider: "edge", azure: null };
+      const fallback = { provider: "edge" as TtsProviderId, azure: null, openai: null };
+
+      if (this.selectedProvider === "azure") {
+        if (!settings.azureEnabled || !settings.azureKey || !settings.azureRegion) {
+          return fallback;
+        }
+        return {
+          provider: "azure",
+          azure: { key: settings.azureKey, region: settings.azureRegion },
+          openai: null,
+        };
       }
 
-      return {
-        provider: "azure",
-        azure: { key: settings.azureKey, region: settings.azureRegion },
-      };
+      if (this.selectedProvider === "openai") {
+        if (!settings.openaiKey.trim() || !settings.openaiBaseUrl.trim()) {
+          return fallback;
+        }
+        return {
+          provider: "openai",
+          azure: null,
+          openai: {
+            key: settings.openaiKey,
+            baseUrl: settings.openaiBaseUrl,
+            model: settings.openaiModel,
+          },
+        };
+      }
+
+      return fallback;
+    },
+
+    /** Catalog of the configured OpenAI compatible endpoint. */
+    openaiVoices(): Voice[] {
+      return buildOpenAiVoices(useSettingsStore().openaiVoices);
     },
 
     currentVoice(state): Voice | undefined {

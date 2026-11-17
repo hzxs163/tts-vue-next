@@ -5,9 +5,10 @@ import { invoke } from "@tauri-apps/api/core";
 import { useI18n } from "vue-i18n";
 import { useMessage } from "vuetify-message-vue3";
 import type { DialogueRole, TtsProviderId } from "../types";
+import type { Voice } from "../types";
 import { DEFAULT_CAST_PRESETS } from "../constants/dialoguePresets";
 import { useDialogueStore } from "../stores/dialogue";
-import { useVoicesStore } from "../stores/voices";
+import { OPENAI_LOCALE, useVoicesStore } from "../stores/voices";
 import { useSettingsStore } from "../stores/settings";
 import { useBgmStore } from "../stores/bgm";
 import { saveAudioBytes } from "../utils/saveAudio";
@@ -89,9 +90,15 @@ const PREFERRED_LOCALES = ["zh-CN", "zh-TW", "zh-HK", "en-US", "en-GB", "ja-JP",
  * The cast picker reads from whichever provider the role is assigned to, so
  * characters may speak through different services in the same drama.
  */
-const activeVoiceGroups = computed(() =>
-  roleFormProvider.value === "azure" ? voicesStore.azureVoicesByLocale : voicesStore.voicesByLocale,
-);
+const activeVoiceGroups = computed(() => {
+  if (roleFormProvider.value === "azure") {
+    return voicesStore.azureVoicesByLocale;
+  }
+  if (roleFormProvider.value === "openai") {
+    return groupByLocale(voicesStore.openaiVoices);
+  }
+  return voicesStore.voicesByLocale;
+});
 
 /** Whether Azure can be offered at all. */
 const azureAvailable = computed(
@@ -101,6 +108,37 @@ const azureAvailable = computed(
     Boolean(settingsStore.azureRegion),
 );
 
+/** Whether an OpenAI compatible endpoint is configured. */
+const openAiAvailable = computed(
+  () => Boolean(settingsStore.openaiKey.trim()) && Boolean(settingsStore.openaiBaseUrl.trim()),
+);
+
+/**
+ * Groups voices by locale. The OpenAI catalog has no locales of its own, so it
+ * lands in a single placeholder group and the pickers keep working unchanged.
+ */
+function groupByLocale(voices: Voice[]): Voice[][] {
+  const groups = new Map<string, Voice[]>();
+  for (const voice of voices) {
+    const list = groups.get(voice.Locale);
+    if (list) {
+      list.push(voice);
+    } else {
+      groups.set(voice.Locale, [voice]);
+    }
+  }
+  return [...groups.keys()]
+    .sort((a, b) => a.localeCompare(b))
+    .map((locale) =>
+      groups
+        .get(locale)!
+        .slice()
+        .sort((a, b) =>
+          (a.FriendlyName || a.ShortName).localeCompare(b.FriendlyName || b.ShortName),
+        ),
+    );
+}
+
 const providerOptions = computed(() => {
   const options: Array<{ title: string; value: TtsProviderId; subtitle?: string }> = [
     { title: t("common.providerEdge"), value: "edge" },
@@ -109,6 +147,12 @@ const providerOptions = computed(() => {
     options.push({
       title: t("common.providerAzure"),
       value: "azure",
+    });
+  }
+  if (openAiAvailable.value) {
+    options.push({
+      title: t("common.providerOpenai"),
+      value: "openai",
     });
   }
   return options;
@@ -131,7 +175,10 @@ const localeOptions = computed(() => {
   ];
 
   return order.map((locale) => ({
-    title: t("dialogue.cast.localeOption", { locale, count: byLocale.get(locale) ?? 0 }),
+    title: t("dialogue.cast.localeOption", {
+      locale: locale === OPENAI_LOCALE ? t("common.customLocale") : locale,
+      count: byLocale.get(locale) ?? 0,
+    }),
     value: locale,
   }));
 });
@@ -228,6 +275,17 @@ function getRoleById(roleId: string): DialogueRole {
   );
 }
 
+/** Falls back to Edge when the role's provider is no longer configured. */
+function resolveAvailableProvider(provider: TtsProviderId | undefined): TtsProviderId {
+  if (provider === "azure" && azureAvailable.value) {
+    return "azure";
+  }
+  if (provider === "openai" && openAiAvailable.value) {
+    return "openai";
+  }
+  return "edge";
+}
+
 function openAddRoleDialog() {
   isEditingRole.value = false;
   editingRoleId.value = "";
@@ -247,7 +305,7 @@ function openEditRoleDialog(role: DialogueRole) {
   isEditingRole.value = true;
   editingRoleId.value = role.id;
   roleFormName.value = role.name;
-  roleFormProvider.value = role.provider === "azure" && azureAvailable.value ? "azure" : "edge";
+  roleFormProvider.value = resolveAvailableProvider(role.provider);
   roleFormVoice.value = role.voice;
   // Derive the locale from the role's own voice instead of the panel, so the
   // dialog reflects the character rather than the last single-speaker pick.

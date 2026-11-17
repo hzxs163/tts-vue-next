@@ -12,12 +12,19 @@ export interface Voice {
   };
 }
 
-export type TtsProviderId = "edge" | "azure";
+export type TtsProviderId = "edge" | "azure" | "openai";
 
 /** Credentials of a paid Azure Speech resource. */
 export interface AzureCredentials {
   key: string;
   region: string;
+}
+
+/** Connection settings of an endpoint speaking the OpenAI `/audio/speech` protocol. */
+export interface OpenAiCredentials {
+  key: string;
+  baseUrl: string;
+  model: string;
 }
 
 export interface TtsParams {
@@ -34,6 +41,8 @@ export interface TtsParams {
   provider?: TtsProviderId;
   /** Required when `provider` is `azure`. */
   azure?: AzureCredentials | null;
+  /** Required when `provider` is `openai`. */
+  openai?: OpenAiCredentials | null;
 }
 
 export interface BatchFile {
@@ -189,6 +198,15 @@ export interface TtsSettings {
   azureKey: string;
   azureRegion: string;
   azureEnabled: boolean;
+  /** OpenAI compatible speech endpoint. */
+  openaiKey: string;
+  openaiBaseUrl: string;
+  openaiModel: string;
+  /**
+   * Comma separated voice ids. The protocol has no endpoint that lists them,
+   * so the user maintains the list for whichever provider is configured.
+   */
+  openaiVoices: string;
 }
 
 export interface TtsProgressEvent {

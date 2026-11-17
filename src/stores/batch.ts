@@ -40,7 +40,7 @@ interface BatchExecutionSnapshot {
   conflictStrategy: ConflictStrategy;
   exportSubtitles: boolean;
   selectedVoice: string;
-  requestProvider: Pick<TtsParams, "provider" | "azure">;
+  requestProvider: Pick<TtsParams, "provider" | "azure" | "openai">;
 }
 
 function toFileName(path: string): string {

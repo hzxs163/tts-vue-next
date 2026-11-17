@@ -9,6 +9,7 @@
 use serde::Deserialize;
 
 pub mod azure;
+pub mod openai;
 
 /// Which speech service a conversion should be routed to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
@@ -19,6 +20,8 @@ pub enum TtsProvider {
     Edge,
     /// A paid Azure Speech resource.
     Azure,
+    /// Any endpoint speaking the OpenAI `/audio/speech` protocol.
+    Openai,
 }
 
 /// Credentials of an Azure Speech resource.
@@ -35,5 +38,24 @@ impl AzureCredentials {
     /// A resource is only usable once both fields are filled in.
     pub fn is_usable(&self) -> bool {
         !self.key.trim().is_empty() && !self.region.trim().is_empty()
+    }
+}
+
+/// Connection settings of an OpenAI compatible speech endpoint.
+///
+/// The voice is not part of these: it travels with the conversion request, the
+/// same way it does for the other providers.
+#[derive(Debug, Clone, Deserialize)]
+pub struct OpenAiCredentials {
+    pub key: String,
+    /// Provider root, e.g. `https://api.openai.com/v1`.
+    pub base_url: String,
+    /// Model id the provider expects, e.g. `tts-1`.
+    pub model: String,
+}
+
+impl OpenAiCredentials {
+    pub fn is_usable(&self) -> bool {
+        !self.key.trim().is_empty() && !self.base_url.trim().is_empty()
     }
 }

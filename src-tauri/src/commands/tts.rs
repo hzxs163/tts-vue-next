@@ -5,6 +5,7 @@ use std::sync::{Arc, LazyLock};
 use tauri::{command, AppHandle, Emitter};
 use tokio::sync::{watch, Mutex};
 
+use crate::audio::ffmpeg::{encode_pcm_to_mp3, silence_pcm, PCM_BYTES_PER_MS};
 use crate::commands::error::CommandError;
 use crate::edge_tts::constants::DEFAULT_OUTPUT_FORMAT;
 use crate::edge_tts::errors::EdgeTTSError;
@@ -13,7 +14,7 @@ use crate::edge_tts::ssml::{build_ssml, generate_silent_mp3, xml_escape};
 use crate::edge_tts::subtitles::build_subtitle_track;
 use crate::edge_tts::types::{SubtitleCue, SubtitleTrack, SynthesisChunk, TTSConfig};
 use crate::edge_tts::Communicate;
-use crate::tts_provider::{azure, AzureCredentials, TtsProvider};
+use crate::tts_provider::{azure, openai, AzureCredentials, OpenAiCredentials, TtsProvider};
 use crate::utils::retry::{retry_with_backoff, RetryOutcome};
 
 const PROGRESS_EVENT: &str = "tts://progress";
@@ -72,6 +73,9 @@ pub struct TtsConvertParams {
     /// Required when `provider` is `azure`.
     #[serde(default)]
     pub azure: Option<AzureCredentials>,
+    /// Required when `provider` is `openai`.
+    #[serde(default)]
+    pub openai: Option<OpenAiCredentials>,
 }
 
 fn default_format() -> String {
@@ -142,8 +146,117 @@ where
 {
     match params.provider {
         TtsProvider::Azure => synthesize_with_azure(params, on_progress).await,
+        TtsProvider::Openai => synthesize_with_openai(params, on_progress).await,
         TtsProvider::Edge => synthesize_with_edge(params, on_progress).await,
     }
+}
+
+/// Synthesizes through an OpenAI compatible endpoint.
+///
+/// Every chunk comes back as raw PCM, so silence is plain zero samples and the
+/// chunks are joined byte by byte. The joined buffer is encoded to this
+/// project's single MP3 format once, which keeps every downstream consumer
+/// (splicing, playback, BGM mixing) provider agnostic.
+async fn synthesize_with_openai<F>(
+    params: TtsConvertParams,
+    on_progress: F,
+) -> Result<(Vec<u8>, SubtitleTrack), EdgeTTSError>
+where
+    F: Fn(usize, usize) + Send + Sync + Clone + 'static,
+{
+    let credentials = params.openai.clone().ok_or_else(|| {
+        EdgeTTSError::ConnectionError("OpenAI compatible credentials were not provided".into())
+    })?;
+
+    let chunks = plan_synthesis_chunks(&params.text);
+    let total = chunks
+        .iter()
+        .filter(|chunk| matches!(chunk, SynthesisChunk::Text(_)))
+        .count();
+
+    let (cancel_tx, cancel_rx) = watch::channel(false);
+    let task_id = params.task_id.clone();
+    {
+        let mut tasks = ACTIVE_TASKS.lock().await;
+        if tasks.contains_key(&task_id) {
+            return Err(EdgeTTSError::TaskAlreadyExists(task_id));
+        }
+        tasks.insert(task_id.clone(), cancel_tx);
+    }
+
+    let outcome = run_openai_chunks(
+        &credentials,
+        &params.voice,
+        &params.rate,
+        chunks,
+        total,
+        &cancel_rx,
+        &on_progress,
+    )
+    .await;
+
+    ACTIVE_TASKS.lock().await.remove(&task_id);
+
+    let (pcm, cues) = outcome?;
+    let mp3 = encode_pcm_to_mp3(&pcm)
+        .await
+        .map_err(|error| EdgeTTSError::ConnectionError(error.to_string()))?;
+
+    Ok((mp3, build_subtitle_track(cues)))
+}
+
+async fn run_openai_chunks<F>(
+    credentials: &OpenAiCredentials,
+    voice: &str,
+    rate: &str,
+    chunks: Vec<SynthesisChunk>,
+    total: usize,
+    cancel_rx: &watch::Receiver<bool>,
+    on_progress: &F,
+) -> Result<(Vec<u8>, Vec<SubtitleCue>), EdgeTTSError>
+where
+    F: Fn(usize, usize) + Send + Sync,
+{
+    let mut pcm: Vec<u8> = Vec::new();
+    let mut cues: Vec<SubtitleCue> = Vec::new();
+    let mut elapsed_ms: u64 = 0;
+    let mut completed = 0usize;
+
+    for chunk in chunks {
+        if *cancel_rx.borrow() {
+            return Err(EdgeTTSError::Cancelled);
+        }
+
+        match chunk {
+            SynthesisChunk::Silence(ms) => {
+                pcm.extend_from_slice(&silence_pcm(ms));
+                elapsed_ms += ms;
+            }
+            SynthesisChunk::Text(text) => {
+                let bytes = openai::synthesize_pcm(credentials, voice, &text, rate).await?;
+                let duration_ms = (bytes.len() / PCM_BYTES_PER_MS) as u64;
+
+                cues.push(SubtitleCue {
+                    offset: elapsed_ms * 10_000,
+                    duration: duration_ms * 10_000,
+                    start_ms: elapsed_ms,
+                    end_ms: elapsed_ms + duration_ms,
+                    text,
+                });
+
+                pcm.extend_from_slice(&bytes);
+                elapsed_ms += duration_ms;
+                completed += 1;
+                on_progress(completed, total);
+            }
+        }
+    }
+
+    if pcm.is_empty() {
+        return Err(EdgeTTSError::NoAudioReceived);
+    }
+
+    Ok((pcm, cues))
 }
 
 /// Bytes per millisecond of the 48 kbps mono MP3 the Edge and Azure endpoints
@@ -392,6 +505,7 @@ mod tests {
             chunk_concurrency: 1,
             provider: TtsProvider::Edge,
             azure: None,
+            openai: None,
         };
 
         let result = run_tts_convert(params, 0, {
@@ -440,6 +554,7 @@ mod tests {
             chunk_concurrency: 1,
             provider: TtsProvider::Edge,
             azure: None,
+            openai: None,
         };
 
         let error = run_tts_convert(params, 0, |_, _, _| async {
@@ -469,6 +584,7 @@ mod tests {
             chunk_concurrency: 1,
             provider: TtsProvider::Edge,
             azure: None,
+            openai: None,
         };
 
         let error = run_tts_convert(params, 0, {
@@ -506,6 +622,7 @@ mod tests {
             chunk_concurrency: 1,
             provider: TtsProvider::Edge,
             azure: None,
+            openai: None,
         };
 
         let error = run_tts_convert(params, 0, {
@@ -548,6 +665,7 @@ mod tests {
             chunk_concurrency: 1,
             provider: TtsProvider::Edge,
             azure: None,
+            openai: None,
         };
 
         let error = run_tts_convert(params, 0, |_, _, _| async { Ok(vec![1]) })
@@ -678,6 +796,7 @@ mod tests {
             chunk_concurrency: 1,
             provider: TtsProvider::Edge,
             azure: None,
+            openai: None,
         };
 
         let (audio, subtitles) = synthesize(params, |_: usize, _: usize| {})

@@ -225,6 +225,102 @@ pub async fn mix_bgm_audio(params: &BgmMixParams) -> Result<(), String> {
     replace_file(&temp_path, target_path).await
 }
 
+/// Sample rate of the PCM that OpenAI compatible providers hand back, and of
+/// the MP3 this app produces everywhere else.
+pub const PCM_SAMPLE_RATE: u32 = 24_000;
+/// Bytes per millisecond of 16-bit mono PCM at [`PCM_SAMPLE_RATE`].
+pub const PCM_BYTES_PER_MS: usize = (PCM_SAMPLE_RATE as usize * 2) / 1000;
+
+/// Silent PCM of the given length.
+///
+/// Providers that stream raw PCM let silence be plain zero samples, which is
+/// far simpler and less error prone than hand building MPEG frames.
+pub fn silence_pcm(duration_ms: u64) -> Vec<u8> {
+    vec![0u8; duration_ms as usize * PCM_BYTES_PER_MS]
+}
+
+/// Encodes raw 24 kHz mono 16-bit PCM into the 24 kHz / 48 kbps mono MP3 that
+/// the rest of the pipeline expects.
+///
+/// Keeping every provider on that one output format is what lets the byte level
+/// concatenation and silence splicing stay provider agnostic.
+pub async fn encode_pcm_to_mp3(pcm: &[u8]) -> Result<Vec<u8>, String> {
+    if pcm.is_empty() {
+        return Err("cannot encode empty PCM".to_string());
+    }
+
+    let resolved_program = resolve_ffmpeg_program()?;
+    let stem = env::temp_dir().join(format!("tts-vue-next-{}", uuid::Uuid::new_v4()));
+    let pcm_path = stem.with_extension("pcm");
+    let mp3_path = stem.with_extension("mp3");
+
+    tokio::fs::write(&pcm_path, pcm)
+        .await
+        .map_err(|error| format!("Failed to write temporary PCM: {error}"))?;
+
+    let mut command = Command::new(&resolved_program.program);
+    command
+        .kill_on_drop(true)
+        .args(["-f", "s16le", "-ar", "24000", "-ac", "1", "-i"])
+        .arg(&pcm_path)
+        .args([
+            "-acodec",
+            "libmp3lame",
+            "-b:a",
+            "48k",
+            "-ar",
+            "24000",
+            "-ac",
+            "1",
+        ])
+        // No ID3 tag and no Xing header: those insert bytes before and
+        // between MPEG frames, and this stream gets spliced with chunks from
+        // other providers. The result is pure CBR frames whose header
+        // (`ff f3 64 c4`) matches what the Edge path produces, so the two
+        // concatenate cleanly.
+        .args(["-id3v2_version", "0", "-write_xing", "0"])
+        .arg("-y")
+        .arg("-hide_banner")
+        .arg("-nostdin")
+        .arg("-loglevel")
+        .arg("error")
+        .arg(&mp3_path)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    let output = match tokio::time::timeout(FFMPEG_TIMEOUT, command.output()).await {
+        Ok(Ok(output)) => output,
+        Ok(Err(error)) => {
+            let _ = tokio::fs::remove_file(&pcm_path).await;
+            return Err(format_ffmpeg_launch_error(&resolved_program, error));
+        }
+        Err(_) => {
+            let _ = tokio::fs::remove_file(&pcm_path).await;
+            return Err(format!(
+                "ffmpeg timed out after {} seconds while encoding PCM",
+                FFMPEG_TIMEOUT.as_secs()
+            ));
+        }
+    };
+
+    let result = if output.status.success() {
+        tokio::fs::read(&mp3_path)
+            .await
+            .map_err(|error| format!("Failed to read encoded MP3: {error}"))
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        Err(if stderr.is_empty() {
+            "ffmpeg error: unknown error".to_string()
+        } else {
+            format!("ffmpeg error: {stderr}")
+        })
+    };
+
+    let _ = tokio::fs::remove_file(&pcm_path).await;
+    let _ = tokio::fs::remove_file(&mp3_path).await;
+    result
+}
+
 async fn remove_partial_output(path: &Path) {
     let _ = tokio::fs::remove_file(path).await;
 }
@@ -739,6 +835,86 @@ mod tests {
         let _ = tokio::fs::remove_file(vocal_path).await;
         let _ = tokio::fs::remove_file(bgm_path).await;
         let _ = tokio::fs::remove_file(output_path).await;
+    }
+
+    #[test]
+    fn test_silence_pcm_matches_the_byte_rate() {
+        // 16-bit mono at 24 kHz is 48 bytes per millisecond.
+        assert_eq!(PCM_BYTES_PER_MS, 48);
+        assert_eq!(silence_pcm(0).len(), 0);
+        assert_eq!(silence_pcm(1000).len(), 48_000);
+        assert_eq!(silence_pcm(24).len(), 1_152);
+        assert!(silence_pcm(10).iter().all(|byte| *byte == 0));
+    }
+
+    #[tokio::test]
+    async fn test_encode_pcm_to_mp3_produces_playable_audio_of_the_right_length() {
+        let _guard = TEST_MUTEX.lock().await;
+        env::remove_var(FFMPEG_ENV_VAR);
+
+        // The whole OpenAI pipeline rests on this: raw PCM in, the project's
+        // single MP3 format out.
+        let pcm = silence_pcm(1_000);
+        let mp3 = encode_pcm_to_mp3(&pcm)
+            .await
+            .expect("encoding should succeed");
+
+        assert!(!mp3.is_empty());
+        // MPEG audio frame sync: 11 bits set.
+        assert_eq!(
+            &mp3[..4],
+            &[0xff, 0xf3, 0x64, 0xc4],
+            "the encoded frames must use the same 24 kHz / 48 kbps mono header \
+             as the Edge path so the two can be spliced"
+        );
+
+        let output_path = unique_temp_path("mp3");
+        tokio::fs::write(&output_path, &mp3).await.unwrap();
+        let program = resolve_ffmpeg_program().unwrap().program;
+        let duration = probe_audio_duration_seconds(&program, &output_path.to_string_lossy())
+            .await
+            .expect("the encoded file should be probeable");
+
+        assert!(
+            (duration - 1.0).abs() < 0.15,
+            "encoded duration should match the PCM length (got {duration})"
+        );
+
+        let _ = tokio::fs::remove_file(output_path).await;
+    }
+
+    #[tokio::test]
+    async fn test_encode_pcm_to_mp3_rejects_empty_input() {
+        let error = encode_pcm_to_mp3(&[]).await.unwrap_err();
+        assert!(error.contains("empty"));
+    }
+
+    #[tokio::test]
+    async fn test_encode_pcm_to_mp3_leaves_no_temporary_files() {
+        let _guard = TEST_MUTEX.lock().await;
+        env::remove_var(FFMPEG_ENV_VAR);
+
+        let before = count_temp_files();
+        let _ = encode_pcm_to_mp3(&silence_pcm(120)).await.unwrap();
+        let after = count_temp_files();
+
+        assert_eq!(after, before, "temporary PCM and MP3 files must be removed");
+    }
+
+    fn count_temp_files() -> usize {
+        std::fs::read_dir(env::temp_dir())
+            .map(|entries| {
+                entries
+                    .filter_map(Result::ok)
+                    .filter(|entry| {
+                        let name = entry.file_name();
+                        let name = name.to_string_lossy();
+                        name.starts_with("tts-vue-next-")
+                            && (name.ends_with(".pcm") || name.ends_with(".mp3"))
+                    })
+                    .count()
+            })
+            .unwrap_or(0)
     }
 
     #[test]
