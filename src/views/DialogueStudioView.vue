@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { save } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { useI18n } from "vue-i18n";
@@ -35,6 +35,7 @@ const isEditingRole = ref(false);
 const editingRoleId = ref("");
 const roleFormName = ref("");
 const roleFormVoice = ref("");
+const roleFormLocale = ref("");
 const roleFormRate = ref(0);
 const roleFormPitch = ref(0);
 const roleFormVolume = ref(0);
@@ -56,6 +57,17 @@ const colorOptions = [
   "cyan",
 ];
 
+/**
+ * The colour select used to show the raw theme token ("purple"), which leaked
+ * an implementation detail into the UI.
+ */
+const colorSelectItems = computed(() =>
+  colorOptions.map((color) => ({
+    title: t(`dialogue.cast.colors.${color}`),
+    value: color,
+  })),
+);
+
 const presetOptions = computed(() =>
   DEFAULT_CAST_PRESETS.map((p) => ({
     title: p.name,
@@ -64,23 +76,100 @@ const presetOptions = computed(() =>
   })),
 );
 
-const voiceOptions = computed(() => {
-  const list =
-    voicesStore.filteredVoices.length > 0 ? voicesStore.filteredVoices : voicesStore.voices;
-  if (list.length === 0) {
-    return [
-      { title: "云希 (zh-CN-YunxiNeural)", value: "zh-CN-YunxiNeural" },
-      { title: "云扬 (zh-CN-YunyangNeural)", value: "zh-CN-YunyangNeural" },
-      { title: "云健 (zh-CN-YunjianNeural)", value: "zh-CN-YunjianNeural" },
-      { title: "云泽 (zh-CN-YunzeNeural)", value: "zh-CN-YunzeNeural" },
-      { title: "晓晓 (zh-CN-XiaoxiaoNeural)", value: "zh-CN-XiaoxiaoNeural" },
-      { title: "晓伊 (zh-CN-XiaoyiNeural)", value: "zh-CN-XiaoyiNeural" },
-    ];
-  }
-  return list.map((v) => ({
-    title: `${v.FriendlyName || v.ShortName} (${v.Locale})`,
-    value: v.ShortName,
+/**
+ * Locales that a radio drama is most likely to need, listed before the rest
+ * so the picker does not open on a hundred alphabetically sorted entries.
+ */
+const PREFERRED_LOCALES = ["zh-CN", "zh-TW", "zh-HK", "en-US", "en-GB", "ja-JP", "ko-KR"];
+
+/**
+ * Every locale in the catalog, with the number of voices it provides.
+ *
+ * Selecting the locale here belongs to the role being edited. It used to be
+ * inherited from the single-speaker panel, which meant assigning an English
+ * voice to one character forced every other role to become English too.
+ */
+const localeOptions = computed(() => {
+  const groups = voicesStore.voicesByLocale;
+  const byLocale = new Map(groups.map((voices) => [voices[0].Locale, voices.length]));
+
+  const order = [
+    ...PREFERRED_LOCALES.filter((locale) => byLocale.has(locale)),
+    ...[...byLocale.keys()].filter((locale) => !PREFERRED_LOCALES.includes(locale)).sort(),
+  ];
+
+  return order.map((locale) => ({
+    title: t("dialogue.cast.localeOption", { locale, count: byLocale.get(locale) ?? 0 }),
+    value: locale,
   }));
+});
+
+/** Voices of the locale currently chosen in the role dialog. */
+const voiceOptions = computed(() => {
+  const voices = voicesStore.voicesByLocale.find(
+    (group) => group[0].Locale === roleFormLocale.value,
+  );
+  if (!voices) {
+    return [];
+  }
+  return voices.map((voice) => ({
+    title: `${voice.FriendlyName || voice.ShortName} · ${voice.ShortName}`,
+    value: voice.ShortName,
+  }));
+});
+
+/**
+ * The locale of a voice. Prefers the catalog, falls back to the locale prefix
+ * of an Edge voice id (`zh-CN-YunxiNeural`), so the cast still renders its
+ * language before the catalog has finished loading.
+ */
+function localeOfVoice(shortName: string): string {
+  const fromCatalog = voicesStore.voices.find((voice) => voice.ShortName === shortName)?.Locale;
+  if (fromCatalog) {
+    return fromCatalog;
+  }
+  return /^([a-z]{2,3}-[A-Za-z]{2,4})-/.exec(shortName)?.[1] ?? "";
+}
+
+/** Locale shown on a role card, independent of catalog load timing. */
+function roleLocale(role: DialogueRole): string {
+  return role.locale || localeOfVoice(role.voice) || "—";
+}
+
+function pickDefaultLocale(): string {
+  // Start from the voice of the most recently added role, so a second
+  // character defaults to the same language as the first one.
+  const lastRole = dialogueStore.roles[dialogueStore.roles.length - 1];
+  const fromLastRole = lastRole ? localeOfVoice(lastRole.voice) : "";
+  if (fromLastRole) {
+    return fromLastRole;
+  }
+  const firstPreferred = PREFERRED_LOCALES.find((locale) =>
+    voicesStore.voicesByLocale.some((group) => group[0].Locale === locale),
+  );
+  return firstPreferred ?? voicesStore.voicesByLocale[0]?.[0]?.Locale ?? "";
+}
+
+/** Keeps the voice valid whenever the locale changes. */
+function syncVoiceToLocale() {
+  const voices = voicesStore.voicesByLocale.find(
+    (group) => group[0].Locale === roleFormLocale.value,
+  );
+  if (!voices || voices.length === 0) {
+    return;
+  }
+  const stillValid = voices.some((voice) => voice.ShortName === roleFormVoice.value);
+  if (!stillValid) {
+    roleFormVoice.value = voices[0].ShortName;
+  }
+}
+
+/**
+ * The voice catalog used to be loaded only by the single-speaker panel, so
+ * opening the cast on a fresh launch left every picker empty.
+ */
+onMounted(() => {
+  void voicesStore.fetchVoices();
 });
 
 const totalChars = computed(() =>
@@ -106,7 +195,8 @@ function openAddRoleDialog() {
   isEditingRole.value = false;
   editingRoleId.value = "";
   roleFormName.value = "";
-  roleFormVoice.value = voicesStore.selectedVoice || "zh-CN-YunxiNeural";
+  roleFormLocale.value = pickDefaultLocale();
+  syncVoiceToLocale();
   roleFormRate.value = 0;
   roleFormPitch.value = 0;
   roleFormVolume.value = 0;
@@ -120,6 +210,10 @@ function openEditRoleDialog(role: DialogueRole) {
   editingRoleId.value = role.id;
   roleFormName.value = role.name;
   roleFormVoice.value = role.voice;
+  // Derive the locale from the role's own voice instead of the panel, so the
+  // dialog reflects the character rather than the last single-speaker pick.
+  roleFormLocale.value = localeOfVoice(role.voice) || pickDefaultLocale();
+  syncVoiceToLocale();
   roleFormRate.value = role.rate;
   roleFormPitch.value = role.pitch;
   roleFormVolume.value = role.volume;
@@ -135,26 +229,21 @@ function saveRole() {
     return;
   }
 
+  const payload = {
+    name,
+    voice: roleFormVoice.value,
+    locale: roleFormLocale.value,
+    rate: roleFormRate.value,
+    pitch: roleFormPitch.value,
+    volume: roleFormVolume.value,
+    color: roleFormColor.value,
+    isDefault: roleFormIsDefault.value,
+  };
+
   if (isEditingRole.value) {
-    dialogueStore.updateRole(editingRoleId.value, {
-      name,
-      voice: roleFormVoice.value,
-      rate: roleFormRate.value,
-      pitch: roleFormPitch.value,
-      volume: roleFormVolume.value,
-      color: roleFormColor.value,
-      isDefault: roleFormIsDefault.value,
-    });
+    dialogueStore.updateRole(editingRoleId.value, payload);
   } else {
-    dialogueStore.addRole({
-      name,
-      voice: roleFormVoice.value,
-      rate: roleFormRate.value,
-      pitch: roleFormPitch.value,
-      volume: roleFormVolume.value,
-      color: roleFormColor.value,
-      isDefault: roleFormIsDefault.value,
-    });
+    dialogueStore.addRole(payload);
   }
 
   showRoleDialog.value = false;
@@ -827,6 +916,10 @@ async function exportSubtitlesFile(format: "srt" | "vtt" = "srt") {
 
                 <v-card-text class="pt-3 pb-2 text-caption">
                   <div class="d-flex align-center justify-space-between mb-1.5">
+                    <span class="text-medium-emphasis">{{ $t("dialogue.cast.locale") }}</span>
+                    <span class="font-weight-medium">{{ roleLocale(role) }}</span>
+                  </div>
+                  <div class="d-flex align-center justify-space-between mb-1.5">
                     <span class="text-medium-emphasis">{{ $t("dialogue.cast.voice") }}</span>
                     <span class="font-weight-medium text-truncate" style="max-width: 140px">
                       {{ role.voice }}
@@ -990,12 +1083,24 @@ async function exportSubtitlesFile(format: "srt" | "vtt" = "srt") {
           />
 
           <v-select
+            v-model="roleFormLocale"
+            :items="localeOptions"
+            :label="$t('dialogue.cast.locale')"
+            variant="outlined"
+            density="compact"
+            class="mb-3"
+            @update:model-value="syncVoiceToLocale"
+          />
+
+          <v-select
             v-model="roleFormVoice"
             :items="voiceOptions"
             :label="$t('dialogue.cast.voice')"
             variant="outlined"
             density="compact"
             class="mb-3"
+            :menu-props="{ maxHeight: 320 }"
+            :no-data-text="$t('dialogue.cast.noVoiceInLocale')"
           />
 
           <div class="mb-3">
@@ -1030,18 +1135,24 @@ async function exportSubtitlesFile(format: "srt" | "vtt" = "srt") {
 
           <v-select
             v-model="roleFormColor"
-            :items="colorOptions"
+            :items="colorSelectItems"
             :label="$t('dialogue.cast.color')"
             variant="outlined"
             density="compact"
             class="mb-3"
           >
-            <template #item="{ props, item }">
-              <v-list-item v-bind="props">
+            <template #item="{ props: itemProps, item }">
+              <v-list-item v-bind="itemProps">
                 <template #prepend>
                   <v-avatar :color="item.value" size="18" class="mr-2" />
                 </template>
               </v-list-item>
+            </template>
+            <template #selection="{ item }">
+              <div class="d-flex align-center ga-2">
+                <v-avatar :color="item.value" size="16" />
+                <span>{{ item.title }}</span>
+              </div>
             </template>
           </v-select>
 

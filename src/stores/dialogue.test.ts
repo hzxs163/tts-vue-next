@@ -58,6 +58,41 @@ describe("useDialogueStore", () => {
     expect(store.lines[store.lines.length - 1].roleId).toBe(store.roles[0].id);
   });
 
+  it("keeps the language of each role independent of the others", () => {
+    const store = useDialogueStore();
+
+    store.addRole({
+      name: "English Narrator",
+      voice: "en-US-AriaNeural",
+      locale: "en-US",
+      rate: 0,
+      pitch: 0,
+      volume: 0,
+      color: "info",
+    });
+
+    store.addRole({
+      name: "中文配角",
+      voice: "zh-CN-XiaoyiNeural",
+      locale: "zh-CN",
+      rate: 0,
+      pitch: 0,
+      volume: 0,
+      color: "success",
+    });
+
+    const english = store.roles.find((role) => role.name === "English Narrator")!;
+    const chinese = store.roles.find((role) => role.name === "中文配角")!;
+
+    expect(english.locale).toBe("en-US");
+    expect(chinese.locale).toBe("zh-CN");
+
+    // Changing one role must not touch the other.
+    store.updateRole(english.id, { locale: "en-GB", voice: "en-GB-SoniaNeural" });
+    expect(store.roles.find((role) => role.id === english.id)?.locale).toBe("en-GB");
+    expect(store.roles.find((role) => role.id === chinese.id)?.locale).toBe("zh-CN");
+  });
+
   it("manipulates dialogue lines (insert, update, remove)", () => {
     const store = useDialogueStore();
     store.clearLines();

@@ -131,6 +131,38 @@ export const useVoicesStore = defineStore("voices", {
       return (shortName: string): boolean => state.favorites.includes(shortName);
     },
 
+    /**
+     * The whole catalog grouped by locale, independent of `selectedLocale`.
+     *
+     * The single-speaker panel filters by the locale the user picked there,
+     * but the dialogue cast has to assign any voice to any role: a radio
+     * drama may mix zh-CN with zh-TW, or a bilingual scene needs an English
+     * voice next to a Chinese one.
+     */
+    voicesByLocale(): Voice[][] {
+      const groups = new Map<string, Voice[]>();
+
+      for (const voice of this.voices) {
+        const list = groups.get(voice.Locale);
+        if (list) {
+          list.push(voice);
+        } else {
+          groups.set(voice.Locale, [voice]);
+        }
+      }
+
+      return [...groups.keys()]
+        .sort((a, b) => a.localeCompare(b))
+        .map((locale) =>
+          groups
+            .get(locale)!
+            .slice()
+            .sort((a, b) =>
+              (a.FriendlyName || a.ShortName).localeCompare(b.FriendlyName || b.ShortName),
+            ),
+        );
+    },
+
     currentVoice(state): Voice | undefined {
       return state.voices.find((voice) => voice.ShortName === state.selectedVoice);
     },

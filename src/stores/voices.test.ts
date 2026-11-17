@@ -111,6 +111,36 @@ describe("useVoicesStore", () => {
     expect(store.filteredVoices).toHaveLength(1);
   });
 
+  test("groups every locale regardless of the panel locale filter", async () => {
+    invokeMock.mockResolvedValue(voicesFixture);
+    const { useVoicesStore } = await import("./voices");
+    const store = useVoicesStore();
+
+    await store.fetchVoices();
+    store.$patch({ selectedLocale: "en-US" });
+
+    // The single-speaker panel stays filtered...
+    expect(store.filteredVoices.map((voice) => voice.Locale)).toEqual(["en-US"]);
+
+    // ...but the cast lineup has to offer the whole catalog, otherwise
+    // assigning an English voice to one role would force every other role to
+    // become English too.
+    const groups = store.voicesByLocale;
+    expect(groups.map((group) => group[0].Locale)).toEqual(["en-US", "zh-CN"]);
+    expect(groups.find((group) => group[0].Locale === "zh-CN")).toHaveLength(2);
+  });
+
+  test("sorts voices inside each locale group by friendly name", async () => {
+    invokeMock.mockResolvedValue(voicesFixture);
+    const { useVoicesStore } = await import("./voices");
+    const store = useVoicesStore();
+
+    await store.fetchVoices();
+
+    const zhGroup = store.voicesByLocale.find((group) => group[0].Locale === "zh-CN");
+    expect(zhGroup?.map((voice) => voice.FriendlyName)).toEqual(["Xiaoxiao", "Yunxi"]);
+  });
+
   test("falls back to the first available voice when persisted selection is missing", async () => {
     invokeMock.mockResolvedValue(voicesFixture);
     const { useVoicesStore } = await import("./voices");

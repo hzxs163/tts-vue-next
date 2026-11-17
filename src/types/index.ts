@@ -83,6 +83,12 @@ export interface DialogueRole {
   id: string;
   name: string;
   voice: string;
+  /**
+   * Language of `voice`. Stored on the role so the cast can show it without
+   * depending on the voice catalog having been loaded, and so a character
+   * keeps its language when the catalog later changes.
+   */
+  locale?: string;
   rate: number;
   pitch: number;
   volume: number;
