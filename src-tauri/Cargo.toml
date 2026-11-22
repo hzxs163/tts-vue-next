@@ -1,6 +1,6 @@
 [package]
 name = "tts-vue-next"
-version = "0.1.0"
+version = "26.11.22"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -43,4 +43,5 @@ regex = "1"
 pulldown-cmark = "0.12"
 docx-rs = "0.4"
 encoding_rs = "0.8"
+
 

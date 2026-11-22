@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- Background Gradient: Deep Royal Blue to Electric Indigo -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3B82F6"/>
+      <stop offset="50%" stop-color="#4F46E5"/>
+      <stop offset="100%" stop-color="#7C3AED"/>
+    </linearGradient>
+
+    <!-- Inner Bubble: Pure crisp white -->
+    <linearGradient id="bubbleGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#F8FAFC"/>
+    </linearGradient>
+
+    <!-- Wave Gradient: Cyan -> Blue -> Violet -->
+    <linearGradient id="waveBarGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0284C7"/>
+      <stop offset="50%" stop-color="#4F46E5"/>
+      <stop offset="100%" stop-color="#9333EA"/>
+    </linearGradient>
+
+    <filter id="cardShadow" x="-15%" y="-15%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="16" stdDeviation="16" flood-color="#1E1B4B" flood-opacity="0.35"/>
+    </filter>
+
+    <filter id="bubbleShadow" x="-15%" y="-15%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#0F172A" flood-opacity="0.22"/>
+    </filter>
+  </defs>
+
+  <!-- Base Rounded Squircle App Icon -->
+  <rect x="24" y="24" width="464" height="464" rx="108" fill="url(#bgGrad)" filter="url(#cardShadow)"/>
+
+  <!-- Subtle glossy highlight on squircle top rim -->
+  <path d="M 24 132 C 24 72, 72 24, 132 24 L 380 24 C 440 24, 488 72, 488 132 C 488 100, 420 50, 256 50 C 92 50, 24 100, 24 132 Z" fill="#FFFFFF" opacity="0.12"/>
+
+  <!-- Center Speech Bubble - Scaled slightly for perfect balance -->
+  <!-- Bounding box: X 74 to 438 (width 364), Y 100 to 400 -->
+  <g filter="url(#bubbleShadow)">
+    <path d="M 148 102
+             L 364 102
+             C 410 102, 436 128, 436 174
+             L 436 280
+             C 436 326, 410 352, 364 352
+             L 216 352
+             L 138 416
+             C 126 426, 108 417, 108 401
+             L 108 352
+             C 86 352, 76 338, 76 310
+             L 76 174
+             C 76 128, 102 102, 148 102
+             Z"
+          fill="url(#bubbleGrad)"/>
+  </g>
+
+  <!-- 5 Audio Wave Bars inside bubble - Adjusted positions to center perfectly in [76..436] (center ~ 256) -->
+  <!-- Bar centers: 168, 212, 256, 300, 344 (Spacing: 44px, Bar width: 24px) -->
+  <g fill="url(#waveBarGrad)">
+    <!-- Bar 1 (Left accent) -->
+    <rect x="156" y="188" width="24" height="78" rx="12" />
+    <!-- Bar 2 (Medium high) -->
+    <rect x="200" y="148" width="24" height="158" rx="12" />
+    <!-- Bar 3 (Peak center) -->
+    <rect x="244" y="126" width="24" height="202" rx="12" />
+    <!-- Bar 4 (Medium high) -->
+    <rect x="288" y="156" width="24" height="142" rx="12" />
+    <!-- Bar 5 (Right accent) -->
+    <rect x="332" y="196" width="24" height="62" rx="12" />
+  </g>
+
+  <!-- Sparkle Accent - Integrated and balanced -->
+  <path d="M 406 88 Q 406 108 386 108 Q 406 108 406 128 Q 406 108 426 108 Q 406 108 406 88 Z" fill="#FACC15" opacity="0.95"/>
+  <circle cx="426" cy="86" r="3.5" fill="#FEF08A" opacity="0.9"/>
+</svg>

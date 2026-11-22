@@ -1,7 +1,7 @@
 {
   "name": "tts-vue-next",
   "private": true,
-  "version": "0.1.0",
+  "version": "v261122",
   "type": "module",
   "packageManager": "pnpm@10.6.3",
   "engines": {

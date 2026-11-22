@@ -88,4 +88,16 @@ body {
 #app {
   height: 100%;
 }
+
+.v-application {
+  height: 100%;
+  max-height: 100vh;
+  overflow: hidden;
+}
+
+.v-application__wrap {
+  min-height: 100% !important;
+  max-height: 100vh;
+  overflow: hidden;
+}
 </style>

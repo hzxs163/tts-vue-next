@@ -6,6 +6,7 @@ import { useTheme } from "vuetify";
 import { useI18n } from "vue-i18n";
 import { useSettingsStore } from "../../stores/settings";
 import { GITHUB_REPO_URL } from "../../constants/project";
+import appLogo from "../../assets/logo.svg";
 
 const theme = useTheme();
 const settingsStore = useSettingsStore();
@@ -84,6 +85,7 @@ onBeforeUnmount(() => {
   <v-app-bar height="36" flat class="title-bar glass-panel" data-tauri-drag-region>
     <div class="drag-region">
       <div class="app-title-wrap">
+        <img :src="appLogo" alt="App Logo" class="app-logo" />
         <span class="app-title">{{ $t("common.appName") }}</span>
       </div>
     </div>
@@ -163,24 +165,29 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   height: 100%;
-  padding-left: 14px;
+  padding-left: 12px;
 }
 
 .app-title-wrap {
-  display: grid;
-  line-height: 1.05;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  line-height: 1;
 }
 
-.app-title-kicker {
-  font-size: 10px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  opacity: 0.7;
+.app-logo {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  display: block;
+  user-select: none;
+  -webkit-user-drag: none;
 }
 
 .app-title {
   font-size: 13px;
   font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
 .close-btn:hover {

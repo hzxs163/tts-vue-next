@@ -15,6 +15,7 @@ const previewLoading = ref(false);
 const previewPlaying = ref(false);
 let previewAudio: HTMLAudioElement | null = null;
 let previewUrl: string | null = null;
+let currentPreviewTaskId: string | null = null;
 
 onMounted(() => {
   void voicesStore.ensureActiveCatalog();
@@ -26,6 +27,9 @@ onUnmounted(() => {
 
 const isCurrentFavorite = computed(() => voicesStore.isFavorite(voicesStore.selectedVoice));
 
+/** While the sample is being generated the button is already clickable: it cancels. */
+const previewActive = computed(() => previewPlaying.value || previewLoading.value);
+
 const favoriteCount = computed(() => voicesStore.favorites.length);
 
 const selectedLocale = computed({
@@ -33,6 +37,7 @@ const selectedLocale = computed({
   set: (value: string | null) => {
     if (value) {
       voicesStore.setLocale(value);
+      stopPreview();
     }
   },
 });
@@ -166,6 +171,10 @@ function getSampleText(voiceName: string, locale: string): string {
 }
 
 function stopPreview() {
+  if (currentPreviewTaskId) {
+    void invoke("tts_stop", { taskId: currentPreviewTaskId }).catch(() => undefined);
+    currentPreviewTaskId = null;
+  }
   if (previewAudio) {
     previewAudio.pause();
     previewAudio.currentTime = 0;
@@ -189,6 +198,7 @@ async function togglePreview() {
   const locale = voicesStore.selectedLocale;
   const text = getSampleText(voice, locale);
   const taskId = `preview-${crypto.randomUUID()}`;
+  currentPreviewTaskId = taskId;
 
   previewLoading.value = true;
   try {
@@ -207,6 +217,11 @@ async function togglePreview() {
       },
     });
 
+    if (currentPreviewTaskId !== taskId) {
+      return;
+    }
+    currentPreviewTaskId = null;
+
     const blob = new Blob([new Uint8Array(buffer)], { type: "audio/mpeg" });
     previewUrl = URL.createObjectURL(blob);
     previewAudio = new Audio(previewUrl);
@@ -222,7 +237,9 @@ async function togglePreview() {
     previewLoading.value = false;
     previewPlaying.value = true;
   } catch {
-    stopPreview();
+    if (currentPreviewTaskId === taskId) {
+      stopPreview();
+    }
   }
 }
 </script>
@@ -283,6 +300,7 @@ async function togglePreview() {
         :title="selectedVoiceTitle"
         :menu-props="{ maxHeight: 380 }"
         :no-data-text="$t('tts.options.noVoiceMatch')"
+        variant="outlined"
         density="comfortable"
         class="voice-selector__field"
         hide-details
@@ -321,30 +339,86 @@ async function togglePreview() {
         </template>
       </v-autocomplete>
 
-      <v-btn
-        icon
-        size="default"
-        variant="tonal"
-        class="voice-selector__action"
-        :color="isCurrentFavorite ? 'amber-darken-2' : undefined"
-        :title="isCurrentFavorite ? $t('tts.options.unfavorite') : $t('tts.options.favorite')"
-        @click="toggleCurrentFavorite"
-      >
-        <v-icon size="20">{{ isCurrentFavorite ? "mdi-star" : "mdi-star-outline" }}</v-icon>
-      </v-btn>
+      <div class="voice-selector__actions">
+        <v-btn
+          icon
+          :size="36"
+          variant="text"
+          class="voice-selector__action voice-selector__favorite"
+          :class="{ 'voice-selector__favorite--active': isCurrentFavorite }"
+          :title="isCurrentFavorite ? $t('tts.options.unfavorite') : $t('tts.options.favorite')"
+          :aria-label="
+            isCurrentFavorite ? $t('tts.options.unfavorite') : $t('tts.options.favorite')
+          "
+          @click="toggleCurrentFavorite"
+        >
+          <!-- Inline SVGs keep the glyph geometry exact; icon fonts carry
+               side bearings that push the play triangle off the circle centre. -->
+          <svg
+            v-if="isCurrentFavorite"
+            class="voice-selector__glyph"
+            width="19"
+            height="19"
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+            <polygon
+              points="12,2.6 15.1,8.7 22,9.8 17,14.7 18.2,21.5 12,18.3 5.8,21.5 7,14.7 2,9.8 8.9,8.7"
+              fill="currentColor"
+            />
+          </svg>
+          <svg
+            v-else
+            class="voice-selector__glyph"
+            width="19"
+            height="19"
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+            <polygon
+              points="12,2.6 15.1,8.7 22,9.8 17,14.7 18.2,21.5 12,18.3 5.8,21.5 7,14.7 2,9.8 8.9,8.7"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </v-btn>
 
-      <v-btn
-        icon
-        size="default"
-        variant="tonal"
-        color="primary"
-        class="voice-selector__action"
-        :loading="previewLoading"
-        :title="previewPlaying ? $t('tts.options.stop') : $t('tts.options.previewVoice')"
-        @click="togglePreview"
-      >
-        <v-icon size="20">{{ previewPlaying ? "mdi-stop" : "mdi-play" }}</v-icon>
-      </v-btn>
+        <v-btn
+          icon
+          :size="36"
+          :variant="previewPlaying ? 'tonal' : 'flat'"
+          color="primary"
+          class="voice-selector__action voice-selector__preview"
+          :class="{ 'voice-selector__preview--playing': previewPlaying }"
+          :loading="previewLoading"
+          :title="previewActive ? $t('tts.options.stop') : $t('tts.options.previewVoice')"
+          :aria-label="previewActive ? $t('tts.options.stop') : $t('tts.options.previewVoice')"
+          @click="togglePreview"
+        >
+          <svg
+            v-if="previewPlaying"
+            class="voice-selector__glyph"
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+            <rect x="7" y="7" width="10" height="10" rx="1" fill="currentColor" />
+          </svg>
+          <svg
+            v-else
+            class="voice-selector__glyph"
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+            <polygon points="8,5 19,12 8,19" fill="currentColor" />
+          </svg>
+        </v-btn>
+      </div>
     </div>
 
     <p v-if="voicesStore.usingCache" class="voice-selector__cache-hint">
@@ -372,16 +446,77 @@ async function togglePreview() {
 }
 
 /*
- * 40px buttons line up with the height of a comfortable field. The icon needs
- * an explicit line-height: the glyph otherwise inherits the button's line box
- * and sits above the optical centre.
+ * The two controls share a subtle pill so they read as one toolbar instead of
+ * two unrelated circles. 36px buttons + 4px padding keep the group at 46px,
+ * close to the height of the comfortable autocomplete next to it.
  */
-.voice-selector__action {
+.voice-selector__actions {
+  display: flex;
   flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid rgba(var(--v-border-color), 0.12);
+  border-radius: 999px;
+  background: rgba(var(--v-theme-on-surface), 0.035);
 }
 
-.voice-selector__action :deep(.v-icon) {
-  line-height: 1;
+.voice-selector__action {
+  flex: 0 0 auto;
+  transition:
+    transform 0.16s ease,
+    box-shadow 0.16s ease,
+    background-color 0.16s ease,
+    color 0.16s ease;
+}
+
+.voice-selector__glyph {
+  display: block;
+  flex: 0 0 auto;
+  text-indent: 0;
+}
+
+/* The star is secondary: quiet at rest, warm only when it is actually used. */
+.voice-selector__favorite {
+  color: rgba(var(--v-theme-on-surface), 0.6);
+}
+
+.voice-selector__favorite:hover {
+  color: rgb(var(--v-theme-on-surface));
+  background: rgba(var(--v-theme-on-surface), 0.08);
+}
+
+.voice-selector__favorite--active,
+.voice-selector__favorite--active:hover {
+  color: rgb(var(--v-theme-warning));
+  background: rgba(var(--v-theme-warning), 0.16);
+}
+
+/* The play button is the primary action; stop drops the shadow to step back. */
+.voice-selector__preview {
+  box-shadow: 0 2px 6px rgba(var(--v-theme-primary), 0.28);
+}
+
+.voice-selector__preview:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(var(--v-theme-primary), 0.34);
+}
+
+.voice-selector__preview:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 3px rgba(var(--v-theme-primary), 0.3);
+}
+
+.voice-selector__preview--playing,
+.voice-selector__preview--playing:hover,
+.voice-selector__preview--playing:active {
+  transform: none;
+  box-shadow: none;
+}
+
+.voice-selector__preview.v-btn--loading {
+  pointer-events: auto;
+  cursor: pointer;
 }
 
 .voice-selector__option {

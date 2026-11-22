@@ -151,10 +151,13 @@ onMounted(() => {
 <style scoped>
 .app-shell {
   min-height: 100vh;
+  height: 100vh;
+  max-height: 100vh;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-
+  grid-template-rows: minmax(0, 1fr);
   box-sizing: border-box;
+  overflow: hidden;
 }
 
 .app-sidebar {
@@ -228,11 +231,18 @@ onMounted(() => {
 .app-main-shell {
   min-width: 0;
   min-height: 0;
+  height: 100%;
+  max-height: 100%;
+  overflow: hidden;
 }
 
 .app-main {
   height: 100%;
+  min-height: 0;
+  max-height: 100%;
   width: calc(100vw - var(--app-sidebar-width, 164px));
   overflow-y: auto;
+  overflow-x: hidden;
+  box-sizing: border-box;
 }
 </style>

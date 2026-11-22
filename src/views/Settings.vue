@@ -353,19 +353,29 @@ async function selectSavePath() {
   padding: 10px;
   height: 100%;
   min-height: 0;
+  max-height: 100%;
   box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
   background:
     radial-gradient(circle at top right, rgba(var(--v-theme-primary), 0.08), transparent 22%),
     linear-gradient(180deg, rgba(var(--v-theme-surface), 1), rgba(var(--v-theme-surface), 0.98));
 }
 
 .settings-workspace {
-  height: 100%;
+  flex: 1 1 0;
   min-height: 0;
+  height: 100%;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
 .settings-panel {
+  flex: 1 1 0;
+  min-height: 0;
   height: 100%;
+  max-height: 100%;
   border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
   background:
     radial-gradient(circle at top right, rgba(var(--v-theme-primary), 0.1), transparent 30%),
@@ -374,10 +384,11 @@ async function selectSavePath() {
   box-shadow: 0 18px 60px rgba(var(--v-theme-on-surface), 0.08);
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .settings-panel__body {
-  flex: 1;
+  flex: 1 1 0;
   display: flex;
   min-height: 0;
   /* Content that does not fit has to scroll, never get clipped. */

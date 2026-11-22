@@ -138,6 +138,7 @@ export const vuetify = createVuetify({
   },
   defaults: {
     VBtn: { variant: "flat" },
+    VAutocomplete: { variant: "outlined", density: "compact" },
     VTextField: { variant: "outlined", density: "compact" },
     VSelect: { variant: "outlined", density: "compact" },
     VSlider: { density: "compact" },

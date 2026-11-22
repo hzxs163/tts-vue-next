@@ -86,7 +86,7 @@ describe("AppLayout", () => {
   test("renders navigation items and version footer", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true,
-      json: async () => ({ tag_name: "v0.1.0" }),
+      json: async () => ({ tag_name: "v261122" }),
     } as Response);
 
     const { wrapper } = await mountLayout();
@@ -96,7 +96,7 @@ describe("AppLayout", () => {
     expect(wrapper.text()).toContain("Batch Convert");
     expect(wrapper.text()).toContain("Dictionary");
     expect(wrapper.text()).toContain("Settings");
-    expect(wrapper.get('[data-testid="sidebar-version"]').text()).toContain("Version v0.1.0");
+    expect(wrapper.get('[data-testid="sidebar-version"]').text()).toContain("Version v261122");
     expect(wrapper.find('[data-testid="sidebar-version-update-icon"]').exists()).toBe(false);
     expect(wrapper.find(".app-shell").exists()).toBe(true);
     expect(wrapper.find(".app-main-shell").exists()).toBe(true);
@@ -131,7 +131,7 @@ describe("AppLayout", () => {
   test("shows warning style and update icon when a newer release exists", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true,
-      json: async () => ({ tag_name: "v0.2.0" }),
+      json: async () => ({ tag_name: "v261123" }),
     } as Response);
 
     const { wrapper } = await mountLayout();
@@ -139,7 +139,7 @@ describe("AppLayout", () => {
 
     const version = wrapper.get('[data-testid="sidebar-version"]');
     expect(version.classes()).toContain("app-sidebar__footer--update");
-    expect(version.text()).toContain("Version v0.1.0 → v0.2.0");
+    expect(version.text()).toContain("Version v261122 → v261123");
     expect(wrapper.find('[data-testid="sidebar-version-update-icon"]').exists()).toBe(true);
   });
 });
